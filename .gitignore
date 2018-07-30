@@ -20,3 +20,4 @@
 /extra/pki/server.key
 /extra/pki/session.pem
 /extra/pki/targets/*
+/*.log

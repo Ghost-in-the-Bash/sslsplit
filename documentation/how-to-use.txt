@@ -52,7 +52,7 @@ router (and man-in-the-middle) for the client.
 
 3. Run SSLsplit on the router (all in one line):
 
-   ./sslsplit -D -l connections.log -j /tmp/sslsplit/ -S /tmp/sslsplit/logdir/ -k ca.key -c ca.cer ssl 0.0.0.0 8443 tcp 0.0.0.0 8080
+   ./sslsplit -D -l connections.log -j /tmp/sslsplit/ -S /tmp/sslsplit/ -k ca.key -c ca.cer ssl 0.0.0.0 8443 tcp 0.0.0.0 8080
 
 5. Configure the client's web browser (if the CA cert is not already installed):
 
@@ -75,7 +75,7 @@ Now you should be able to open up Firefox and go to any website. Click on the
 secure HTTPS lock icon in the URL bar to display the certificate. It should be
 verified by the CA in the router's sslsplit directory. On the router, you can
 view the connections.log in the sslsplit directory, and all decrypted web data
-in the log files located in /tmp/sslsplit/logdir/.
+in the log files located in /tmp/sslsplit/.
 --------------------------------------------------------------------------------
 
 

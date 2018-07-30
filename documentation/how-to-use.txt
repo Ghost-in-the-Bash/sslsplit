@@ -21,7 +21,11 @@ And of course, be sure to use
   make clean
   make
 
-inside the sslsplit directory before running SSLsplit.
+inside the sslsplit directory before running sslsplit.
+
+Next, install libevent so sslsplit can handle large numbers of connections:
+
+  apt-get install libssl-dev libevent-dev
 
 
 Method 0: SSLsplit on the Default Gateway

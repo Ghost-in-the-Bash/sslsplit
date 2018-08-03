@@ -154,7 +154,23 @@ logbuf_write_free(logbuf_t *lb, writefunc_t writefunc)
 {
 	ssize_t rv1, rv2 = 0;
 
-	rv1 = writefunc(lb->fh, lb->buf, lb->sz);
+	// Print content to standard output
+	/* ---------------------------------------------------------------------- */
+	printf("<headers>\n");
+
+	// Prints whole HTTP message to standard output
+	/* ---------------------------------------------------------------------- */
+	rv1 = fwrite(lb -> buf, sizeof(char), lb -> sz, stdout);
+	/* ---------------------------------------------------------------------- */
+
+	printf("</headers>\n");
+	/* ---------------------------------------------------------------------- */
+
+	// Writes content to log file; not needed since writing to stdout instead
+	/* ---------------------------------------------------------------------- */
+	// rv1 = writefunc(lb->fh, lb->buf, lb->sz);
+	/* ---------------------------------------------------------------------- */
+
 	if (lb->buf) {
 		free(lb->buf);
 	}

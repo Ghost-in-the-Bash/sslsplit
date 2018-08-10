@@ -159,8 +159,8 @@ ifeq ($(shell id -u),0)
 BINOWNERFLAGS?=	-o $(BINUID) -g $(BINGID)
 MANOWNERFLAGS?=	-o $(MANUID) -g $(MANGID)
 else
-BINOWNERFLAGS?=	
-MANOWNERFLAGS?=	
+BINOWNERFLAGS?=
+MANOWNERFLAGS?=
 endif
 
 OPENSSL?=	openssl
@@ -212,7 +212,7 @@ include Mk/buildinfo.mk
 VERSION:=	$(BUILD_VERSION)
 
 # Autodetect dependencies known to pkg-config
-PKGS:=		
+PKGS:=
 ifndef OPENSSL_BASE
 PKGS+=		$(shell $(PKGCONFIG) $(PCFLAGS) --exists openssl \
 		&& echo openssl)
@@ -225,7 +225,7 @@ PKGS+=		$(shell $(PKGCONFIG) $(PCFLAGS) --exists libevent_openssl \
 PKGS+=		$(shell $(PKGCONFIG) $(PCFLAGS) --exists libevent_pthreads \
 		&& echo libevent_pthreads)
 endif
-TPKGS:=		
+TPKGS:=
 ifndef CHECK_BASE
 TPKGS+=		$(shell $(PKGCONFIG) $(PCFLAGS) --exists check \
 		&& echo check)
@@ -336,6 +336,11 @@ CPPFLAGS+=	$(PKG_CPPFLAGS) $(CPPDEFS) $(FEATURES)
 TCPPFLAGS+=	$(TPKG_CPPFLAGS)
 LDFLAGS+=	$(PKG_LDFLAGS)
 LIBS+=		$(PKG_LIBS)
+
+# In order to work in OpenWRT 18.06.0, the musl-fts library needs to be linked
+# ------------------------------------------------------------------------------
+LDFLAGS += -lfts
+# ------------------------------------------------------------------------------
 
 ifneq ($(shell uname),Darwin)
 CFLAGS+=	-pthread
@@ -499,4 +504,3 @@ FORCE:
 
 .PHONY: all config clean test travis lint install deinstall copyright manlint \
         mantest man manclean fetchdeps dist disttest distclean realclean
-

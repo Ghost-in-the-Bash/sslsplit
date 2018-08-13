@@ -26,8 +26,7 @@ Method 0: SSLsplit on the Default Gateway
 This is the simplist way to use SSLsplit. The machine running SSLsplit acts as a
 router (and man-in-the-middle) for the client.
 
-1. A certificate and key are already included in the repo. Nevertheless, for
-   reference, this is how the Certificate Authority certificate was created:
+1. Generate a Certificate Authority certificate:
 
    openssl genrsa -out ca.key 4096
    openssl req -new -x509 -days 1826 -key ca.key -out ca.crt

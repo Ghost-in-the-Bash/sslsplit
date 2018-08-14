@@ -736,7 +736,10 @@ static void
 log_content_dir_closecb(void *fh)
 {
 	log_content_ctx_t *ctx = fh;
-
+	// Delete these log files because they're not needed
+	/* ---------------------------------------------------------------------- */
+	remove(ctx -> u.dir.filename);
+	/* ---------------------------------------------------------------------- */
 	if (ctx->u.dir.filename)
 		free(ctx->u.dir.filename);
 	if (ctx->u.dir.fd != 1)

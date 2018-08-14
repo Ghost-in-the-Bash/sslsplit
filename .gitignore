@@ -21,3 +21,5 @@
 /extra/pki/session.pem
 /extra/pki/targets/*
 /*.log
+/*.key
+/*.crt

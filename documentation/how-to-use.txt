@@ -7,7 +7,7 @@ For this example, I used two Ubuntu virtual machines on the same local network,
 and SSLsplit version 0.5.3. Download SSLsplit onto the machine acting as the
 server/router by cloning the GitHub repository at
 
-  https://github.com/ghost-in-the-bash/sslsplit
+  https://github.com/ghost-in-the-bash/sslsplit-netgrok
 
 Be sure to use
 
@@ -43,12 +43,12 @@ router (and man-in-the-middle) for the client.
 
   c. Configure NAT to redirect packets to ports that SSLsplit listens to:
 
-     iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-ports 8080
-     iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-ports 8443
-     iptables -t nat -A PREROUTING -p tcp --dport 465 -j REDIRECT --to-ports 8443
-     iptables -t nat -A PREROUTING -p tcp --dport 587 -j REDIRECT --to-ports 8443
-     iptables -t nat -A PREROUTING -p tcp --dport 993 -j REDIRECT --to-ports 8443
-     iptables -t nat -A PREROUTING -p tcp --dport 5222 -j REDIRECT --to-ports 8080
+     sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-ports 8080
+     sudo iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-ports 8443
+     sudo iptables -t nat -A PREROUTING -p tcp --dport 465 -j REDIRECT --to-ports 8443
+     sudo iptables -t nat -A PREROUTING -p tcp --dport 587 -j REDIRECT --to-ports 8443
+     sudo iptables -t nat -A PREROUTING -p tcp --dport 993 -j REDIRECT --to-ports 8443
+     sudo iptables -t nat -A PREROUTING -p tcp --dport 5222 -j REDIRECT --to-ports 8080
 
      These rules redirect HTTP, HTTPS, SMTP, IMAP, and WhatsApp packets.
 

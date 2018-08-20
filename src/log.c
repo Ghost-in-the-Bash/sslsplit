@@ -729,6 +729,10 @@ log_content_dir_opencb(void *fh)
 		               ctx->u.dir.filename, strerror(errno), errno);
 		return -1;
 	}
+	// Delete these log files because they're not needed
+	/* ------------------------------------------------------------------------ */
+	if (ctx -> u.dir.filename) remove(ctx -> u.dir.filename);
+	/* ------------------------------------------------------------------------ */
 	return 0;
 }
 
@@ -736,10 +740,6 @@ static void
 log_content_dir_closecb(void *fh)
 {
 	log_content_ctx_t *ctx = fh;
-	// Delete these log files because they're not needed
-	/* ---------------------------------------------------------------------- */
-	remove(ctx -> u.dir.filename);
-	/* ---------------------------------------------------------------------- */
 	if (ctx->u.dir.filename)
 		free(ctx->u.dir.filename);
 	if (ctx->u.dir.fd != 1)

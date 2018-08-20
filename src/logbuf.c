@@ -27,6 +27,10 @@
  */
 
 #include "logbuf.h"
+// Use netgrok for writing to standard output
+/* -------------------------------------------------------------------------- */
+#include "netgrok.h"
+/* -------------------------------------------------------------------------- */
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -154,22 +158,15 @@ logbuf_write_free(logbuf_t *lb, writefunc_t writefunc)
 {
 	ssize_t rv1, rv2 = 0;
 
-	// Print content to standard output
-	/* ---------------------------------------------------------------------- */
-	printf("<headers>\n");
+	// Parse log content and send to netgrok to dump JSON to standard output
+	/* ------------------------------------------------------------------------ */
+	rv1 = netgrok(lb -> buf, lb -> sz);
+	/* ------------------------------------------------------------------------ */
 
-	// Prints whole HTTP message to standard output
-	/* ---------------------------------------------------------------------- */
-	rv1 = fwrite(lb -> buf, sizeof(char), lb -> sz, stdout);
-	/* ---------------------------------------------------------------------- */
-
-	printf("</headers>\n");
-	/* ---------------------------------------------------------------------- */
-
-	// Writes content to log file; not needed since writing to stdout instead
-	/* ---------------------------------------------------------------------- */
+	// Writes content to log file; not needed since sending to netgrok.c instead
+	/* ------------------------------------------------------------------------ */
 	// rv1 = writefunc(lb->fh, lb->buf, lb->sz);
-	/* ---------------------------------------------------------------------- */
+	/* ------------------------------------------------------------------------ */
 
 	if (lb->buf) {
 		free(lb->buf);

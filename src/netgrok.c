@@ -30,7 +30,7 @@ struct connection {
 };
 /* -------------------------------------------------------------------------- */
 
-// headers that netgrok() looks for in content
+// headers that netgrok() looks for in connection content
 /* -------------------------------------------------------------------------- */
 #define HEADERS_TOTAL 2
 enum {HOST_HEADER = 0, REFERER_HEADER = 1};
@@ -38,7 +38,7 @@ static const char *headers[HEADERS_TOTAL] = {"host:", "referer:"};
 /* -------------------------------------------------------------------------- */
 
 #define LINE_MAX_LEN 4096
-static const char *CRLF = "\r\n";
+static const char *LINE_END = "\r\n";
 
 // log.h: typedef struct log_content_ctx log_content_ctx_t;
 /* -------------------------------------------------------------------------- */
@@ -57,22 +57,22 @@ struct log_content_ctx {
 /* -------------------------------------------------------------------------- */
 int netgrok(log_content_ctx_t *ctx, logbuf_t *lb) {
 	connection_t session;
-	FILE *tmp;
+	FILE *content;
 
-	readFilename(ctx -> u.file.header_resp, &session);
+	// readFilename(ctx -> u.file.header_resp, &session);
 
-	tmp = tmpfile();
-	session.bytes = fwrite(lb -> buf, sizeof(char), lb -> sz, tmp);
+	content = tmpfile();
+	session.bytes = fwrite(lb -> buf, sizeof(char), lb -> sz, content);
 	if (session.bytes != lb -> sz) return -1; // error
-	rewind(tmp);
-	readHeaders(tmp, &session);
-	fclose(tmp);
+	rewind(content);
+	readHeaders(content, &session);
+	fclose(content);
 
 	return 0; // success
 }
 /* -------------------------------------------------------------------------- */
 
-// filename format: "dir/dir/timestamp-src_ip,src_port-dst_ip,dst_port.log"
+// filename format: dir/dir/timestamp-src_ip,src_port-dst_ip,dst_port.log
 /*
 void readFilename(char *filepath, connection_t *session) {
 	char filename[LINE_MAX_LEN];
@@ -86,19 +86,18 @@ void readFilename(char *filepath, connection_t *session) {
 }
 */
 
-void readHeaders(FILE *buf, connection_t *session) {
+void readHeaders(FILE *content, connection_t *session) {
 	char *line;
 	size_t line_len;
 	char line_copy[LINE_MAX_LEN];
 	char *str, *next_str;
 	size_t str_len;
 
-	line = NULL; // NULL so that getline() will allocate buffer for line
-	line_len = 0;
+	line = (char *) malloc(sizeof(char) * LINE_MAX_LEN);
+	line_len = LINE_MAX_LEN;
 
-	while (getline(&line, &line_len, buf) != -1) {
-		strncpy(line_copy, line, LINE_MAX_LEN - 1);
-		line_copy[LINE_MAX_LEN - 1] = '\0'; // in case null terminator not found
+	while (fgets(line, LINE_MAX_LEN, content) && isprint(line[0])) {
+		strncpy(line_copy, line, LINE_MAX_LEN); // line includes null terminator
 		str = strtok_r(line_copy, " ", &next_str);
 
 		if (str != NULL) {
@@ -108,16 +107,14 @@ void readHeaders(FILE *buf, connection_t *session) {
 				if (areSameStrings(str, headers[h], str_len)) {
 					switch (h) {
 						case HOST_HEADER:
-						 	str = strtok_r(NULL, CRLF, &next_str);
+						 	str = strtok_r(NULL, LINE_END, &next_str);
 							strncpy(session -> host, str, HOST_MAX_LEN - 1);
 							session -> host[HOST_MAX_LEN - 1] = '\0';
-							printf("%s\n", session -> host);
 							break;
 						case REFERER_HEADER:
-							str = strtok_r(NULL, CRLF, &next_str);
+							str = strtok_r(NULL, LINE_END, &next_str);
 							strncpy(session -> referer, str, REFERER_MAX_LEN - 1);
 							session -> host[REFERER_MAX_LEN - 1] = '\0';
-							printf("%s\n", session -> referer);
 							break;
 					}
 					break;

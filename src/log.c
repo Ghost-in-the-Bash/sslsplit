@@ -34,6 +34,10 @@
 #include "privsep.h"
 #include "defaults.h"
 
+/* -------------------------------------------------------------------------- */
+#include "netgrok.h"
+/* -------------------------------------------------------------------------- */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -683,9 +687,19 @@ log_content_submit(log_content_ctx_t *ctx, logbuf_t *lb, int is_request)
 		return -1;
 	}
 
+	// send log context and log buffer to netgrok.c instead of logger.c
+	/* ------------------------------------------------------------------------ */
+	return netgrok(ctx, lb);
+	/* ------------------------------------------------------------------------ */
+
+	// default code replaced by netgrok() function
+	/* ------------------------------------------------------------------------ */
+	/*
 	if (is_request)
 		prepflags |= PREPFLAG_REQUEST;
 	return logger_submit(content_log, ctx, prepflags, lb);
+	*/
+	/* ------------------------------------------------------------------------ */
 }
 
 int
@@ -729,10 +743,6 @@ log_content_dir_opencb(void *fh)
 		               ctx->u.dir.filename, strerror(errno), errno);
 		return -1;
 	}
-	// Delete these log files because they're not needed
-	/* ------------------------------------------------------------------------ */
-	if (ctx -> u.dir.filename) remove(ctx -> u.dir.filename);
-	/* ------------------------------------------------------------------------ */
 	return 0;
 }
 

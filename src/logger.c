@@ -188,6 +188,9 @@ logger_close(logger_t *logger, void *fh)
 static void *
 logger_thread(void *arg)
 {
+	// default code commented out because using netgrok() in log.c instead
+	/* ------------------------------------------------------------------------ */
+	/*
 	logger_t *logger = arg;
 	logbuf_t *lb;
 	int e = 0;
@@ -210,6 +213,8 @@ logger_thread(void *arg)
 			logger->except();
 		}
 	}
+	*/
+	/* ------------------------------------------------------------------------ */
 
 	return NULL;
 }

@@ -1,43 +1,48 @@
 How to Use SSLsplit
-Lasted updated: 11:32 2018-07-30
+Lasted updated: 2018-08-23
 --------------------------------------------------------------------------------
 Reference: https://blog.heckel.xyz/2013/08/04/use-sslsplit-to-transparently-sniff-tls-ssl-connections/
 
-For this example, I used two Ubuntu virtual machines on the same local network,
-and SSLsplit version 0.5.3. Download SSLsplit onto the machine acting as the
-server/router by cloning the GitHub repository at
+For this example, I used SSLsplit version 0.5.3.
 
-  https://github.com/ghost-in-the-bash/sslsplit-netgrok
-
-Be sure to use
-
-  make clean
-  make
-
-inside the sslsplit directory before running sslsplit.
-
-Next, install libevent so sslsplit can handle large numbers of connections:
-
-  sudo apt-get install libssl-dev libevent-dev
-
-
-Method 0: SSLsplit on the Default Gateway
+Method 0: SSLsplit on an Ubuntu machine acting as the default gateway (router)
 --------------------------------------------------------------------------------
 This is the simplist way to use SSLsplit. The machine running SSLsplit acts as a
 router (and man-in-the-middle) for the client.
 
-1. Generate a Certificate Authority certificate:
+Download SSLsplit onto the Ubuntu machine acting as the router by cloning the
+GitHub repository at
 
-   openssl genrsa -out ca.key 4096
-   openssl req -new -x509 -days 1826 -key ca.key -out ca.crt
+  https://github.com/ghost-in-the-bash/sslsplit-netgrok
 
-2. Configure the router:
+Next, install libevent and libssl so sslsplit can handle large numbers of ssl
+connections:
+
+  sudo apt-get install libssl-dev libevent-dev
+
+1. Generate a Certificate Authority certificate. Eventually, this step will be
+   automated on the OpenWRT router to generate a NetGrok CA key and certificate
+   if they are not present. Generate a key and certificate in the
+   sslsplit-netgrok/ directory:
+
+   openssl genrsa -out netgrok.key 4096
+   openssl req -new -x509 -days 1826 -key netgrok.key -out netgrok.crt
+
+   Country:             US
+   State:               New York
+   City:                West Point
+   Organization:        NetGrok CA
+   Organizational Unit: NetGrok II
+   Common Name:         NetGrok
+   Email Address:
+
+2. Configure the Ubuntu machine acting as the router:
 
   a. Enable IP forwarding:
 
      sudo sysctl -w net.ipv4.ip_forward=1
 
-  b. Delete all current NAT rules:
+  b. Delete all current NAT rules, just in case:
 
      sudo iptables -t nat -F
 
@@ -52,23 +57,28 @@ router (and man-in-the-middle) for the client.
 
      These rules redirect HTTP, HTTPS, SMTP, IMAP, and WhatsApp packets.
 
-3. Run SSLsplit on the router (all in one line):
+3. Run SSLsplit from the sslsplit-netgrok/src/ directory on the Ubuntu machine
+   acting as the router:
 
-   ./sslsplit -S /tmp/sslsplit/ -k ca.key -c ca.cer ssl 0.0.0.0 8443 tcp 0.0.0.0 8080 | python3 netgrok.py
+   make clean
+   make
+   ./sslsplit -S ../ -k ../netgrok.key -c ../netgrok.crt ssl 0.0.0.0 8443 tcp 0.0.0.0 8080
 
    The -S option normally would write the decrypted content of connections to
-   log files. However, logbuf.c has been modified to write to stdout instead.
-   Piping stdin to netgrok.py outputs a JSON dump of connections/properties.
+   log files. However, logger.c has been modified to not make logs at all, and
+   log.c has been modified to direct content to netgrok.c. The netgrok()
+   function dumps connections in JSON format to standard output.
 
 5. Configure the client's web browser (if the CA cert is not already installed):
 
-   a. Copy the ca.crt from the router's sslsplit directory over to the client
+   a. Copy the netgrok.crt onto the client machine
    b. Open up Firefox and go to Preferences > Privacy & Security >
-      View Certificates > Authorities > Import, and then select the ca.crt
+      View Certificates > Authorities > Import, and then select the netgrok.crt
 
 4. Configure the client's default gateway:
 
-   a. Add a new default gateway (use the router's IP address):
+   a. Add a new default gateway (use the IP address of the Ubuntu machine acting
+      as the router):
 
       sudo route add default gw <router_ip_address>
 
@@ -78,8 +88,7 @@ router (and man-in-the-middle) for the client.
 
 Now you should be able to open up Firefox and go to any website. Click on the
 secure HTTPS lock icon in the URL bar to display the certificate. It should be
-verified by the CA in the router's sslsplit directory.
+verified by the NetGrok CA.
 --------------------------------------------------------------------------------
-
 
 --------------------------------------------------------------------------------

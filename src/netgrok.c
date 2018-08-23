@@ -10,22 +10,21 @@ then outputs a JSON dump of connection information to standard output.
 /* -------------------------------------------------------------------------- */
 // struct that stores details about each connection
 /* -------------------------------------------------------------------------- */
-#define CONNECTION_FIELDS 8
+#define CONNECTION_SIZE 8
 enum {
 	SRC_IP = 0, SRC_PORT = 1, DST_IP = 2, DST_PORT = 3,
 	BYTES = 4, PROTOCOL = 5, HOST = 6, REFERER = 7
 };
 #define IP_MAX_LEN 40
-#define PORT_MAX_LEN 6
+#define INT_MAX_LEN 6
 #define PROTOCOL_MAX_LEN 12
 #define HOST_MAX_LEN 64
 #define REFERER_MAX_LEN 2048
 // netgrok.h: typedef struct connection connection_t;
 struct connection {
-	char src_ip[IP_MAX_LEN]; char src_port[PORT_MAX_LEN];
-	char dst_ip[IP_MAX_LEN]; char dst_port[PORT_MAX_LEN];
-	ssize_t bytes;
-	char protocol[PROTOCOL_MAX_LEN];
+	char src_ip[IP_MAX_LEN]; char src_port[INT_MAX_LEN];
+	char dst_ip[IP_MAX_LEN]; char dst_port[INT_MAX_LEN];
+	char bytes[INT_MAX_LEN]; char protocol[PROTOCOL_MAX_LEN];
 	char host[HOST_MAX_LEN]; char referer[REFERER_MAX_LEN];
 };
 /* -------------------------------------------------------------------------- */
@@ -61,17 +60,20 @@ struct log_content_ctx {
 int netgrok(log_content_ctx_t *ctx, logbuf_t *lb) {
 	connection_t session;
 
-	readFilename(ctx -> u.file.header_resp, &session);
+	readAddresses(ctx -> u.file.header_resp, &session);
+	interpretProtocol(&session);
 	readHeaders(lb -> buf, lb -> sz, &session);
+	printSession(&session);
 
 	return 0; // success
 }
 /* -------------------------------------------------------------------------- */
 
 // temporary solution for finding IP addresses and port numbers for connections
-// by taking information from log file names
+// by taking information from log file names; does not actually show direction
+// of data flow for each session
 /* -------------------------------------------------------------------------- */
-void readFilename(char *filepath, connection_t *session) {
+void readAddresses(char *filepath, connection_t *session) {
 	char filename[LINE_MAX_LEN];
 	char *str, *next_str, *prev_str;
 
@@ -95,29 +97,48 @@ void readFilename(char *filepath, connection_t *session) {
 		session -> src_ip[IP_MAX_LEN - 1] = '\0';
 
 		str = strtok_r(NULL, "-", &next_str); // str: src_port
-		strncpy(session -> src_port, str, PORT_MAX_LEN);
-		session -> src_port[PORT_MAX_LEN - 1] = '\0';
+		strncpy(session -> src_port, str, INT_MAX_LEN);
+		session -> src_port[INT_MAX_LEN - 1] = '\0';
 
 		str = strtok_r(NULL, ",", &next_str); // str: dst_ip
 		strncpy(session -> dst_ip, str, IP_MAX_LEN);
 		session -> dst_ip[IP_MAX_LEN - 1] = '\0';
 
 		str = strtok_r(NULL, ".", &next_str); // str: dst_port
-		strncpy(session -> dst_port, str, PORT_MAX_LEN);
-		session -> dst_port[PORT_MAX_LEN - 1] = '\0';
+		strncpy(session -> dst_port, str, INT_MAX_LEN);
+		session -> dst_port[INT_MAX_LEN - 1] = '\0';
+	}
+}
+/* -------------------------------------------------------------------------- */
+
+// temporary solution for finding the application layer protocol being used
+// based on the port numbers used in the connection
+/* -------------------------------------------------------------------------- */
+void interpretProtocol(connection_t *session) {
+	unsigned int port;
+	enum {HTTP = 80, HTTPS = 443};
+
+	port = atoi(session -> dst_port);
+
+	switch (port) {
+		case HTTP: strncpy(session -> protocol, "http", PROTOCOL_MAX_LEN); break;
+		case HTTPS: strncpy(session -> protocol, "https", PROTOCOL_MAX_LEN); break;
+		default: strncpy(session -> protocol, "unknown", PROTOCOL_MAX_LEN); break;
 	}
 }
 /* -------------------------------------------------------------------------- */
 
 void readHeaders(unsigned char *buf, ssize_t bufsize, connection_t *session) {
 	FILE *content;
+	ssize_t bytes_read;
 	char *line;
 	char line_copy[LINE_MAX_LEN];
 	char *str, *next_str;
 	size_t str_len;
 
 	content = tmpfile();
-	session -> bytes = fwrite(buf, sizeof(char), bufsize, content);
+	bytes_read = fwrite(buf, sizeof(char), bufsize, content);
+	snprintf(session -> bytes, INT_MAX_LEN, "%li", bytes_read);
 	line = (char *) malloc(sizeof(char) * LINE_MAX_LEN);
 
 	rewind(content);
@@ -153,83 +174,6 @@ void readHeaders(unsigned char *buf, ssize_t bufsize, connection_t *session) {
 	fclose(content);
 }
 
-/*
-static enum protocol_t protocol;
-static connection_t session;
-
-static char *headers[HEADERS_TOTAL] = {"ssl", "tcp", "host:", "referer:"};
-
-ssize_t netgrok(unsigned char *buf, ssize_t len) {
-	FILE *tmp;
-	ssize_t count;
-	char line[LINE_MAX_LEN];
-
-	tmp = tmpfile();
-	count = fwrite(buf, sizeof(char), len, tmp);
-	rewind(tmp);
-	session.host[0] = '\0';
-	session.referer[0] = '\0';
-
-	while (fgets(line, LINE_MAX_LEN, tmp) != NULL) {
-		size_t line_len;
-		char *head;
-		size_t head_len;
-
-		line_len = strlen(line);
-		if (line_len > 2) {
-			if (iswspace(line[line_len - 1])) {
-				line[line_len - 1] = '\0';
-				if (iswspace(line[line_len - 2])) line[line_len - 2] = '\0';
-			}
-		}
-
-		head = strtok(line, " ");
-		if (head == NULL) break;
-		head_len = strlen(head);
-
-		for (int h = SSL_HEADER; h < HEADERS_TOTAL; h++) {
-			char *header = headers[h];
-			size_t header_len = strlen(header);
-			if (head_len == header_len && areSameStrings(head, header, header_len)) {
-				switch (h) {
-					case SSL_HEADER: protocol = SSL; readAddresses(&session); break;
-					case TCP_HEADER: protocol = TCP; readAddresses(&session); break;
-					case HOST_HEADER:
-						strncpy(session.host, strtok(NULL, " "), HOST_MAX_LEN - 1);
-						break;
-					case REFERER_HEADER:
-						strncpy(session.referer, strtok(NULL, " "), REFERER_MAX_LEN - 1);
-						break;
-				}
-				break;
-			}
-		}
-
-		head = strtok(NULL, " ");
-		while (head != NULL && protocol != HTTP && protocol != HTTPS) {
-			if (areSameStrings(head, "http", 4)) {
-				if (protocol == SSL) protocol = HTTPS;
-				else protocol = HTTP;
-				break;
-			}
-			head = strtok(NULL, " ");
-		}
-	}
-
-	switch (protocol) {
-		case SSL: strncpy(session.protocol, "ssl", 4); break;
-		case TCP: strncpy(session.protocol, "tcp", 4); break;
-		case HTTP: strncpy(session.protocol, "http", 5); break;
-		case HTTPS: strncpy(session.protocol, "https", 6); break;
-		default: strncpy(session.protocol, "tcp", 4); break;
-	}
-
-	printSession(&session);
-	fclose(tmp);
-	return count;
-}
-*/
-
 int areSameStrings(const char *lhs, const char *rhs, int len) {
 	for (int i = 0; i < len; i++) {
 		if (tolower(lhs[i]) != tolower(rhs[i])) return 0; // false
@@ -237,39 +181,32 @@ int areSameStrings(const char *lhs, const char *rhs, int len) {
 	return 1; // true
 }
 
-void readAddresses(connection_t *session) {
-	strncpy(session -> src_ip, strtok(NULL, " "), IP_MAX_LEN - 1);
-	strncpy(session -> src_port, strtok(NULL, " "), PORT_MAX_LEN - 1);
-	strncpy(session -> dst_ip, strtok(NULL, " "), IP_MAX_LEN - 1);
-	strncpy(session -> dst_port, strtok(NULL, " "), PORT_MAX_LEN - 1);
-}
-
 void printSession(connection_t *session) {
-	char *json[CONNECTION_FIELDS];
-	char *session_dict[CONNECTION_FIELDS] = {
-		session -> protocol,
+	char *json[CONNECTION_SIZE];
+	char *session_dict[CONNECTION_SIZE] = {
 		session -> src_ip,
 		session -> src_port,
 		session -> dst_ip,
 		session -> dst_port,
+		session -> bytes,
+		session -> protocol,
 		session -> host,
 		session -> referer
 	};
 
-	json[PROTOCOL] = "\"protocol\": \"";
-	json[SRC_IP] = "\", \"src_ip\": \"";
+	json[SRC_IP] = "\"src_ip\": \"";
 	json[SRC_PORT] = "\", \"src_port\": \"";
 	json[DST_IP] = "\", \"dst_ip\": \"";
 	json[DST_PORT] = "\", \"dst_port\": \"";
+	json[BYTES] = "\", \"bytes\": \"";
+	json[PROTOCOL] = "\", protocol\": \"";
 	if (session -> host[0] != '\0') json[HOST] = "\", \"host\": \"";
 	else json[HOST] = "";
-	if (session -> referer[0] != '\0') {
-		json[REFERER] = "\", \"referer\": \"";
-	}
+	if (session -> referer[0] != '\0') json[REFERER] = "\", \"referer\": \"";
 	else json[REFERER] = "";
 
 	printf("{");
-	for (int i = 0; i < CONNECTION_FIELDS; i++) {
+	for (int i = 0; i < CONNECTION_SIZE; i++) {
 		printf("%s%s", json[i], session_dict[i]);
 	}
 	printf("\"}\n");

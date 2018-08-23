@@ -15,7 +15,7 @@ typedef struct connection connection_t;
 
 int netgrok(log_content_ctx_t *ctx, logbuf_t *lb);
 void readFilename(char *filepath, connection_t *session);
-void readHeaders(FILE *buf, connection_t *session);
+void readHeaders(unsigned char *buf, ssize_t bufsize, connection_t *session);
 int areSameStrings(const char *lhs, const char *rhs, int len);
 void readAddresses(connection_t *session);
 void printSession(connection_t *session);

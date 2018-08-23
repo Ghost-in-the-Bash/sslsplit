@@ -15,7 +15,7 @@ enum {
 	SRC_IP = 0, SRC_PORT = 1, DST_IP = 2, DST_PORT = 3,
 	BYTES = 4, PROTOCOL = 5, HOST = 6, REFERER = 7
 };
-#define IP_MAX_LEN 39
+#define IP_MAX_LEN 40
 #define PORT_MAX_LEN 6
 #define PROTOCOL_MAX_LEN 12
 #define HOST_MAX_LEN 64
@@ -53,48 +53,74 @@ struct log_content_ctx {
 /* -------------------------------------------------------------------------- */
 /* -------------------------------------------------------------------------- */
 
+
+// NetGrok
+/* -------------------------------------------------------------------------- */
 // main function
 /* -------------------------------------------------------------------------- */
 int netgrok(log_content_ctx_t *ctx, logbuf_t *lb) {
 	connection_t session;
-	FILE *content;
 
-	// readFilename(ctx -> u.file.header_resp, &session);
-
-	content = tmpfile();
-	session.bytes = fwrite(lb -> buf, sizeof(char), lb -> sz, content);
-	if (session.bytes != lb -> sz) return -1; // error
-	rewind(content);
-	readHeaders(content, &session);
-	fclose(content);
+	readFilename(ctx -> u.file.header_resp, &session);
+	readHeaders(lb -> buf, lb -> sz, &session);
 
 	return 0; // success
 }
 /* -------------------------------------------------------------------------- */
 
-// filename format: dir/dir/timestamp-src_ip,src_port-dst_ip,dst_port.log
-/*
+// temporary solution for finding IP addresses and port numbers for connections
+// by taking information from log file names
+/* -------------------------------------------------------------------------- */
 void readFilename(char *filepath, connection_t *session) {
 	char filename[LINE_MAX_LEN];
-	char *dir, *next_dir;
+	char *str, *next_str, *prev_str;
 
-	strncpy(filename, filepath, strlen(filepath));
+	strncpy(filename, filepath, LINE_MAX_LEN);
 	filename[LINE_MAX_LEN - 1] = '\0'; // in case null terminator not found
 
-	dir = strtok_r(filename, "/", &next_dir);
-	while (dir != NULL) dir = strtok_r(NULL, "/", &next_dir);
-}
-*/
+	// filename: dir/dir/timestamp-src_ip,src_port-dst_ip,dst_port.log
+	prev_str = NULL;
+	str = strtok_r(filename, "/", &next_str);
+	while (str != NULL) {
+		prev_str = str;
+		str = strtok_r(NULL, "/", &next_str);
+	}
 
-void readHeaders(FILE *content, connection_t *session) {
+	// prev_str: timestamp-src_ip,src_port-dst_ip,dst_port.log
+	if (prev_str != NULL) {
+		str = strtok_r(prev_str, "-", &next_str); // str: timestamp
+
+		str = strtok_r(NULL, ",", &next_str); // str: src_ip
+		strncpy(session -> src_ip, str, IP_MAX_LEN);
+		session -> src_ip[IP_MAX_LEN - 1] = '\0';
+
+		str = strtok_r(NULL, "-", &next_str); // str: src_port
+		strncpy(session -> src_port, str, PORT_MAX_LEN);
+		session -> src_port[PORT_MAX_LEN - 1] = '\0';
+
+		str = strtok_r(NULL, ",", &next_str); // str: dst_ip
+		strncpy(session -> dst_ip, str, IP_MAX_LEN);
+		session -> dst_ip[IP_MAX_LEN - 1] = '\0';
+
+		str = strtok_r(NULL, ".", &next_str); // str: dst_port
+		strncpy(session -> dst_port, str, PORT_MAX_LEN);
+		session -> dst_port[PORT_MAX_LEN - 1] = '\0';
+	}
+}
+/* -------------------------------------------------------------------------- */
+
+void readHeaders(unsigned char *buf, ssize_t bufsize, connection_t *session) {
+	FILE *content;
 	char *line;
-	size_t line_len;
 	char line_copy[LINE_MAX_LEN];
 	char *str, *next_str;
 	size_t str_len;
 
+	content = tmpfile();
+	session -> bytes = fwrite(buf, sizeof(char), bufsize, content);
 	line = (char *) malloc(sizeof(char) * LINE_MAX_LEN);
-	line_len = LINE_MAX_LEN;
+
+	rewind(content);
 
 	while (fgets(line, LINE_MAX_LEN, content) && isprint(line[0])) {
 		strncpy(line_copy, line, LINE_MAX_LEN); // line includes null terminator
@@ -108,12 +134,12 @@ void readHeaders(FILE *content, connection_t *session) {
 					switch (h) {
 						case HOST_HEADER:
 						 	str = strtok_r(NULL, LINE_END, &next_str);
-							strncpy(session -> host, str, HOST_MAX_LEN - 1);
+							strncpy(session -> host, str, HOST_MAX_LEN);
 							session -> host[HOST_MAX_LEN - 1] = '\0';
 							break;
 						case REFERER_HEADER:
 							str = strtok_r(NULL, LINE_END, &next_str);
-							strncpy(session -> referer, str, REFERER_MAX_LEN - 1);
+							strncpy(session -> referer, str, REFERER_MAX_LEN);
 							session -> host[REFERER_MAX_LEN - 1] = '\0';
 							break;
 					}
@@ -124,6 +150,7 @@ void readHeaders(FILE *content, connection_t *session) {
 	}
 
 	free(line);
+	fclose(content);
 }
 
 /*
@@ -247,3 +274,4 @@ void printSession(connection_t *session) {
 	}
 	printf("\"}\n");
 }
+/* -------------------------------------------------------------------------- */

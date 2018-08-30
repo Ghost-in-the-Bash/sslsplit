@@ -47,7 +47,7 @@ TARGET_CFLAGS += $(TARGET_CPPFLAGS)
 
 define Package/sslsplit-netgrok/install
 	$(INSTALL_DIR) $(1)/usr/bin/
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/sslsplit-netgrok $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/sslsplit $(1)/usr/bin/
 endef
 
 $(eval $(call BuildPackage,sslsplit-netgrok,+musl-fts))

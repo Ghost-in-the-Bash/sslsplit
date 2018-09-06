@@ -4,6 +4,8 @@
 #include "log.h"
 #include "logbuf.h"
 
+#include <czmq.h> // needs to be installed
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,6 +21,7 @@ void readAddresses(char *filepath, connection_t *session);
 void interpretProtocol(connection_t *session);
 void readHeaders(unsigned char *buf, ssize_t bufsize, connection_t *session);
 int areSameStrings(const char *lhs, const char *rhs, int len);
-void printSession(connection_t *session);
+void publishSession(connection_t *session);
+int publish(char *json_dump);
 
 #endif /* NETGROK_H */

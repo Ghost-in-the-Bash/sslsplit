@@ -36,8 +36,17 @@ enum {HOST_HEADER = 0, REFERER_HEADER = 1};
 static const char *headers[HEADERS_TOTAL] = {"host:", "referer:"};
 /* -------------------------------------------------------------------------- */
 
+// details specific to lines
+/* -------------------------------------------------------------------------- */
 #define LINE_MAX_LEN 4096
 static const char *LINE_END = "\r\n";
+/* -------------------------------------------------------------------------- */
+
+// socket for netgrok to publish its JSON dumps to
+/* -------------------------------------------------------------------------- */
+#define ENDPOINT "ipc://netgrok"
+static zsock_t *pub_sock;
+/* -------------------------------------------------------------------------- */
 
 // log.h: typedef struct log_content_ctx log_content_ctx_t;
 /* -------------------------------------------------------------------------- */
@@ -63,7 +72,7 @@ int netgrok(log_content_ctx_t *ctx, logbuf_t *lb) {
 	readAddresses(ctx -> u.file.header_resp, &session);
 	interpretProtocol(&session);
 	readHeaders(lb -> buf, lb -> sz, &session);
-	printSession(&session);
+	publishSession(&session);
 
 	return 0; // success
 }
@@ -181,9 +190,12 @@ int areSameStrings(const char *lhs, const char *rhs, int len) {
 	return 1; // true
 }
 
-void printSession(connection_t *session) {
-	char *json[CONNECTION_SIZE];
-	char *session_dict[CONNECTION_SIZE] = {
+void publishSession(connection_t *session) {
+	// This is an ugly, tedious way to make a JSON dump, but whatever. I'll make a
+	// cleaner, simpler way later. Maybe.
+	/* ------------------------------------------------------------------------ */
+	char *names[CONNECTION_SIZE];
+	char *values[CONNECTION_SIZE] = {
 		session -> src_ip,
 		session -> src_port,
 		session -> dst_ip,
@@ -193,22 +205,44 @@ void printSession(connection_t *session) {
 		session -> host,
 		session -> referer
 	};
+	char json_dump[LINE_MAX_LEN];
 
-	json[SRC_IP] = "\"src_ip\": \"";
-	json[SRC_PORT] = "\", \"src_port\": \"";
-	json[DST_IP] = "\", \"dst_ip\": \"";
-	json[DST_PORT] = "\", \"dst_port\": \"";
-	json[BYTES] = "\", \"bytes\": \"";
-	json[PROTOCOL] = "\", protocol\": \"";
-	if (session -> host[0] != '\0') json[HOST] = "\", \"host\": \"";
-	else json[HOST] = "";
-	if (session -> referer[0] != '\0') json[REFERER] = "\", \"referer\": \"";
-	else json[REFERER] = "";
+	names[SRC_IP] = "\"src_ip\": \"";
+	names[SRC_PORT] = "\", \"src_port\": ";
+	names[DST_IP] = ", \"dst_ip\": \"";
+	names[DST_PORT] = "\", \"dst_port\": ";
+	names[BYTES] = ", \"bytes\": ";
+	names[PROTOCOL] = ", protocol\": \"";
+	if (session -> host[0] != '\0') names[HOST] = "\", \"host\": \"";
+	else names[HOST] = "";
+	if (session -> referer[0] != '\0') names[REFERER] = "\", \"referer\": \"";
+	else names[REFERER] = "";
 
-	printf("{");
+	strncat(json_dump, "{", 1);
 	for (int i = 0; i < CONNECTION_SIZE; i++) {
-		printf("%s%s", json[i], session_dict[i]);
+		strncat(json_dump, names[i], REFERER_MAX_LEN);
+		strncat(json_dump, values[i], REFERER_MAX_LEN);
 	}
-	printf("\"}\n");
+	strncat(json_dump, "\"}", 2);
+	/* ------------------------------------------------------------------------ */
+	// printf("%s\n", json_dump);
+
+	publish(json_dump);
 }
+
+// publish using CZMQ
+/* -------------------------------------------------------------------------- */
+int publish(char *json_dump) {
+	zsys_handler_set(NULL); // so that Ctrl + C works
+
+	if (!pub_sock) pub_sock = zsock_new_pub(ENDPOINT);
+	assert(pub_sock);
+
+	zstr_send(pub_sock, json_dump);
+
+	if (zsys_interrupted && pub_sock) zsock_destroy(&pub_sock);
+
+	return 0;
+}
+/* -------------------------------------------------------------------------- */
 /* -------------------------------------------------------------------------- */

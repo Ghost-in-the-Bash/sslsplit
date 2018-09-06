@@ -183,7 +183,7 @@ For this example, SSLsplit-NetGrok was cross-compiled for OpenWRT 18.06.0 on a
     1. Edit the sslsplit-netgrok/src/GNUmakefile
     2. Go to where I commented (line 340), "In order to work in OpenWRT 18.06.0,
     the musl-fts library needs to be linked"
-    3. Uncomment the 'LDFLAGS += -lfts'
+    3. Uncomment the 'LIBS += -lfts'
 
   The Makefile in the sslsplit-netgrok/ directory already includes musl-fts.
 

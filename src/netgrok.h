@@ -4,12 +4,14 @@
 #include "log.h"
 #include "logbuf.h"
 
-#include <czmq.h> // needs to be installed
+#include <zmq.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <assert.h>
+#include <signal.h>
 
 typedef struct connection connection_t;
 
@@ -17,11 +19,14 @@ typedef struct connection connection_t;
 // logbuf.h: struct logbuf; typedef struct logbuf logbuf_t;
 
 int netgrok(log_content_ctx_t *ctx, logbuf_t *lb);
+
 void readAddresses(char *filepath, connection_t *session);
 void interpretProtocol(connection_t *session);
 void readHeaders(unsigned char *buf, ssize_t bufsize, connection_t *session);
 int areSameStrings(const char *lhs, const char *rhs, int len);
-void publishSession(connection_t *session);
-int publish(char *json_dump);
+void sessToJSON(connection_t *session, char *buf);
+
+int publish(char *buf, int len);
+void interruptHandler(int sig);
 
 #endif /* NETGROK_H */

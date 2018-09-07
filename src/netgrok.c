@@ -1,8 +1,8 @@
-/*
+/* -----------------------------------------------------------------------------
 The netgrok() function takes input passed in from log_content_submit() in log.c,
 which has also been modified to not produce content logs. The netgrok() function
 then outputs a JSON dump of connection information to standard output.
-*/
+----------------------------------------------------------------------------- */
 
 #include "netgrok.h"
 
@@ -36,7 +36,7 @@ enum {HOST_HEADER = 0, REFERER_HEADER = 1};
 static const char *headers[HEADERS_TOTAL] = {"host:", "referer:"};
 /* -------------------------------------------------------------------------- */
 
-// details specific to lines
+// text lines
 /* -------------------------------------------------------------------------- */
 #define LINE_MAX_LEN 4096
 static const char *LINE_END = "\r\n";
@@ -44,8 +44,15 @@ static const char *LINE_END = "\r\n";
 
 // socket for netgrok to publish its JSON dumps to
 /* -------------------------------------------------------------------------- */
-#define ENDPOINT "ipc://netgrok"
-static zsock_t *pub_sock;
+#define ENDPOINT "ipc://netgrok_socket"
+static void *context;
+static void *publisher_socket;
+
+// for interrupt handler
+/* -------------------------------------------------------------------------- */
+#define NO_FLAGS 0
+static struct sigaction signal_action;
+/* -------------------------------------------------------------------------- */
 /* -------------------------------------------------------------------------- */
 
 // log.h: typedef struct log_content_ctx log_content_ctx_t;
@@ -68,11 +75,13 @@ struct log_content_ctx {
 /* -------------------------------------------------------------------------- */
 int netgrok(log_content_ctx_t *ctx, logbuf_t *lb) {
 	connection_t session;
+	char json[LINE_MAX_LEN];
 
 	readAddresses(ctx -> u.file.header_resp, &session);
 	interpretProtocol(&session);
 	readHeaders(lb -> buf, lb -> sz, &session);
-	publishSession(&session);
+	sessToJSON(&session, json);
+	publish(json, strlen(json));
 
 	return 0; // success
 }
@@ -137,6 +146,8 @@ void interpretProtocol(connection_t *session) {
 }
 /* -------------------------------------------------------------------------- */
 
+// reads from HTTP headers; for now, assumes content contains HTTP
+/* -------------------------------------------------------------------------- */
 void readHeaders(unsigned char *buf, ssize_t bufsize, connection_t *session) {
 	FILE *content;
 	ssize_t bytes_read;
@@ -182,15 +193,21 @@ void readHeaders(unsigned char *buf, ssize_t bufsize, connection_t *session) {
 	free(line);
 	fclose(content);
 }
+/* -------------------------------------------------------------------------- */
 
+// compares two strings; case insensitive
+/* -------------------------------------------------------------------------- */
 int areSameStrings(const char *lhs, const char *rhs, int len) {
 	for (int i = 0; i < len; i++) {
 		if (tolower(lhs[i]) != tolower(rhs[i])) return 0; // false
 	}
 	return 1; // true
 }
+/* -------------------------------------------------------------------------- */
 
-void publishSession(connection_t *session) {
+// write a string (in JSON format) of information about the connection
+/* -------------------------------------------------------------------------- */
+void sessToJSON(connection_t *session, char *buf) {
 	// This is an ugly, tedious way to make a JSON dump, but whatever. I'll make a
 	// cleaner, simpler way later. Maybe.
 	/* ------------------------------------------------------------------------ */
@@ -207,42 +224,76 @@ void publishSession(connection_t *session) {
 	};
 	char json_dump[LINE_MAX_LEN];
 
-	names[SRC_IP] = "\"src_ip\": \"";
-	names[SRC_PORT] = "\", \"src_port\": ";
-	names[DST_IP] = ", \"dst_ip\": \"";
-	names[DST_PORT] = "\", \"dst_port\": ";
-	names[BYTES] = ", \"bytes\": ";
-	names[PROTOCOL] = ", protocol\": \"";
-	if (session -> host[0] != '\0') names[HOST] = "\", \"host\": \"";
-	else names[HOST] = "";
-	if (session -> referer[0] != '\0') names[REFERER] = "\", \"referer\": \"";
-	else names[REFERER] = "";
+	names[SRC_IP]   = "src_ip";
+	names[SRC_PORT] = "src_port";
+	names[DST_IP]   = "dst_ip";
+	names[DST_PORT] = "dst_port";
+	names[BYTES]    = "bytes";
+	names[PROTOCOL] = "protocol";
+	names[HOST]     = NULL;
+	names[REFERER]  = NULL;
 
-	strncat(json_dump, "{", 1);
-	for (int i = 0; i < CONNECTION_SIZE; i++) {
-		strncat(json_dump, names[i], REFERER_MAX_LEN);
-		strncat(json_dump, values[i], REFERER_MAX_LEN);
+	if (session -> host[0]    != '\0') names[HOST]    = "host";
+	if (session -> referer[0] != '\0') names[REFERER] = "referer";
+
+	strncat(json_dump, "{\"", 2);
+	strncat(json_dump, names[0], REFERER_MAX_LEN);
+	strncat(json_dump, "\": \"", 4);
+	strncat(json_dump, values[0], REFERER_MAX_LEN);
+	strncat(json_dump, "\"", 1);
+	for (int i = 1; i < CONNECTION_SIZE; i++) {
+		if (names[i] != NULL) {
+			strncat(json_dump, ", \"", 3);
+			strncat(json_dump, names[i], REFERER_MAX_LEN);
+			strncat(json_dump, "\": \"", 4);
+			strncat(json_dump, values[i], REFERER_MAX_LEN);
+			strncat(json_dump, "\"", 1);
+		}
 	}
-	strncat(json_dump, "\"}", 2);
+	strncat(json_dump, "}", 1);
 	/* ------------------------------------------------------------------------ */
 	// printf("%s\n", json_dump);
 
-	publish(json_dump);
+	strncpy(buf, json_dump, LINE_MAX_LEN);
 }
-
-// publish using CZMQ
 /* -------------------------------------------------------------------------- */
-int publish(char *json_dump) {
-	zsys_handler_set(NULL); // so that Ctrl + C works
 
-	if (!pub_sock) pub_sock = zsock_new_pub(ENDPOINT);
-	assert(pub_sock);
+// publish using ZMQ
+/* -------------------------------------------------------------------------- */
+int publish(char *buf, int len) {
+	// setup for interrupt handling
+	/* ------------------------------------------------------------------------ */
+	signal_action.sa_handler = interruptHandler;
+	signal_action.sa_flags = NO_FLAGS;
+	sigemptyset(&signal_action.sa_mask);
+	sigaction(SIGINT, &signal_action, NULL);
+	sigaction(SIGTERM, &signal_action, NULL);
+	/* ------------------------------------------------------------------------ */
 
-	zstr_send(pub_sock, json_dump);
+	if (!context) {
+		context = zmq_ctx_new();
+		assert(context);
+	}
 
-	if (zsys_interrupted && pub_sock) zsock_destroy(&pub_sock);
+	if (!publisher_socket) {
+		publisher_socket = zmq_socket(context, ZMQ_PUB);
+		assert(publisher_socket);
+		assert(zmq_bind(publisher_socket, ENDPOINT) == 0);
+	}
+
+	assert(zmq_send(publisher_socket, buf, len + 1, NO_FLAGS) == len + 1);
 
 	return 0;
+}
+/* -------------------------------------------------------------------------- */
+
+// clean up the ZMQ stuff if the program is stopped
+/* -------------------------------------------------------------------------- */
+void interruptHandler(int sig) {
+	printf("\nsignal: %d; closing publisher socket now\n", sig);
+	if (publisher_socket) zmq_close(publisher_socket);
+	if (context) zmq_ctx_destroy(context);
+	exit(sig);
 }
 /* -------------------------------------------------------------------------- */
 /* -------------------------------------------------------------------------- */

@@ -1,5 +1,5 @@
 How to Use SSLsplit-NetGrok
-Last updated: 2018-08-30
+Last edited: 2018-09-10
 --------------------------------------------------------------------------------
 The following examples use SSLsplit version 0.5.3.
 About SSLsplit: https://www.roe.ch/SSLsplit
@@ -215,10 +215,15 @@ For this example, SSLsplit-NetGrok was cross-compiled for OpenWRT 18.06.0 on a
   $ ./scripts/feeds update musl-fts
   $ ./scripts/feeds install musl-fts
 
-  b. Make all NetGrok packages available:
+  b. Make the zmq package available:
+
+  $ ./scripts/feeds update zmq
+  $ ./scripts/feeds install zmq
+
+  c. Make all NetGrok packages available:
 
   $ ./scripts/feeds update netgrok
-  $ ./scripts/feeds install -a -p netgrok
+  $ ./scripts/feeds install -p netgrok
 
 
 7. Build the SSLsplit-NetGrok package:
@@ -229,7 +234,7 @@ For this example, SSLsplit-NetGrok was cross-compiled for OpenWRT 18.06.0 on a
 
   b. Find the sslsplit-netgrok package in 'Network'
   c. Press 'Y' to select the sslsplit-netgrok package to make it available
-  d. Find the musl-fts package in 'Libraries' and select it as well
+  d. Go into 'Libraries' and select the musl-fts package and libzmq packages
   e. Save and exit the menuconfig interface.
   f. Compile:
 

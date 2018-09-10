@@ -339,7 +339,7 @@ LIBS+=		$(PKG_LIBS)
 
 # In order to work in OpenWRT 18.06.0, the musl-fts library needs to be linked
 # ------------------------------------------------------------------------------
-# LIBS += -lfts
+LIBS += -lfts
 # ------------------------------------------------------------------------------
 
 # link with ZMQ for netgrok-publisher to work

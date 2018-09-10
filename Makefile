@@ -22,7 +22,7 @@ define Package/sslsplit-netgrok
 		+libevent2 \
 		+libevent2-openssl +libopenssl +openssl \
 		+libevent2-pthreads +libpthread \
-		+musl-fts
+		+musl-fts +libzmq
 endef
 
 define Package/sslsplit-netgrok/description
@@ -50,4 +50,4 @@ define Package/sslsplit-netgrok/install
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/src/sslsplit $(1)/usr/bin/
 endef
 
-$(eval $(call BuildPackage,sslsplit-netgrok,+musl-fts))
+$(eval $(call BuildPackage,sslsplit-netgrok))

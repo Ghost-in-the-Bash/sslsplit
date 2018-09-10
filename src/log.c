@@ -680,7 +680,7 @@ errout:
 int
 log_content_submit(log_content_ctx_t *ctx, logbuf_t *lb, int is_request)
 {
-	unsigned long prepflags = 0;
+	// unsigned long prepflags = 0; // not needed for sslsplit-netgrok
 
 	if (!ctx->open) {
 		log_err_printf("log_content_submit called on closed ctx\n");

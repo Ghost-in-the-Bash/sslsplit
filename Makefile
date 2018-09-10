@@ -20,7 +20,7 @@ define Package/sslsplit-netgrok
 	TITLE := sslsplit-netgrok -- transparent SSL/TLS interception and analysis
 	DEPENDS := \
 		+libevent2 \
-		+libevent2-openssl +libopenssl +openssl \
+		+libevent2-openssl +libopenssl \
 		+libevent2-pthreads +libpthread \
 		+musl-fts +libzmq
 endef

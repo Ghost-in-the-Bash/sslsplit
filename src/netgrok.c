@@ -1,7 +1,7 @@
 /* -----------------------------------------------------------------------------
 The netgrok() function takes input passed in from log_content_submit() in log.c,
 which has also been modified to not produce content logs. The netgrok() function
-then outputs a JSON dump of connection information to standard output.
+then outputs a JSON dump of connection information to a socket.
 ----------------------------------------------------------------------------- */
 
 #include "netgrok.h"
@@ -13,7 +13,7 @@ then outputs a JSON dump of connection information to standard output.
 #define CONNECTION_SIZE 8
 enum {
 	SRC_IP = 0, SRC_PORT = 1, DST_IP = 2, DST_PORT = 3,
-	BYTES = 4, PROTOCOL = 5, HOST = 6, REFERER = 7
+	BYTES  = 4, PROTOCOL = 5, HOST   = 6, REFERER  = 7
 };
 #define IP_MAX_LEN 40
 #define INT_MAX_LEN 6
@@ -208,9 +208,6 @@ int areSameStrings(const char *lhs, const char *rhs, int len) {
 // write a string (in JSON format) of information about the connection
 /* -------------------------------------------------------------------------- */
 void sessToJSON(connection_t *session, char *buf) {
-	// This is an ugly, tedious way to make a JSON dump, but whatever. I'll make a
-	// cleaner, simpler way later. Maybe.
-	/* ------------------------------------------------------------------------ */
 	char *names[CONNECTION_SIZE];
 	char *values[CONNECTION_SIZE] = {
 		session -> src_ip,
@@ -222,8 +219,11 @@ void sessToJSON(connection_t *session, char *buf) {
 		session -> host,
 		session -> referer
 	};
-	char json_dump[LINE_MAX_LEN];
+	char json_dump[LINE_MAX_LEN] = "";
 
+	// This is an ugly, tedious way to make a JSON dump, but whatever. I'll make a
+	// cleaner, simpler way later. Maybe.
+	/* ------------------------------------------------------------------------ */
 	names[SRC_IP]   = "src_ip";
 	names[SRC_PORT] = "src_port";
 	names[DST_IP]   = "dst_ip";
@@ -250,9 +250,9 @@ void sessToJSON(connection_t *session, char *buf) {
 			strncat(json_dump, "\"", 1);
 		}
 	}
-	strncat(json_dump, "}", 1);
+	strncat(json_dump, "}\0", 2);
 	/* ------------------------------------------------------------------------ */
-	// printf("%s\n", json_dump);
+	printf("%s\n", json_dump); // for debugging
 
 	strncpy(buf, json_dump, LINE_MAX_LEN);
 }

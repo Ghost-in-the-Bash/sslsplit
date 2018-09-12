@@ -234,7 +234,7 @@ For this example, SSLsplit-NetGrok was cross-compiled for OpenWRT 18.06.0 on a
 
   b. Find the sslsplit-netgrok package in 'Network'
   c. Press 'Y' to select the sslsplit-netgrok package to make it available
-  d. Go into 'Libraries' and select the musl-fts package and libzmq packages
+  d. Go into 'Libraries' and select the musl-fts package and libzmq-nc package
   e. Save and exit the menuconfig interface.
   f. Compile:
 
@@ -250,8 +250,28 @@ TODO
 --------------------------------------------------------------------------------
 
 
-3: Compiling an OpenWRT firmware image with SSLsplit included
+3: Compiling an OpenWRT firmware image with SSLsplit-NetGrok included
 --------------------------------------------------------------------------------
-TODO
+Reference:
+https://openwrt.org/docs/guide-user/additional-software/beginners-build-guide
+
+0. Checkout the latest stable release of OpenWRT:
+
+$ git tag
+$ git checkout <version>
+
+1. Include the web interface in the build:
+
+$ ./scripts/feeds update luci
+$ ./scripts/feeds install luci
+
+1. Select the relevant packages in the make menuconfig:
+  a. LuCI -> Collections -> luci
+  a. Network -> sslsplit-netgrok
+
+2. Build the OpenWRT image. This will take some time:
+
+$ make download
+$ make -j 5
 --------------------------------------------------------------------------------
 --------------------------------------------------------------------------------

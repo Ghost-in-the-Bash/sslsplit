@@ -1,154 +1,111 @@
 /* -----------------------------------------------------------------------------
-The netgrok() function takes input passed in from log_content_submit() in log.c,
-which has also been modified to not produce content logs. The netgrok() function
-then outputs a JSON dump of connection information to a socket.
------------------------------------------------------------------------------ */
+The netgrok() function takes input passed in from pxy_bev_readcb() in pxyconn.c.
+It then outputs info about the connections in JSON format to an inter-process
+socket.
 
+The pxy_bev_readcb() function in pxyconn.c is modified (starting at line 1786)
+to setup the connection information for NetGrok and call netgrok(). It is the
+only C file in SSLsplit that has been modified.
+----------------------------------------------------------------------------- */
 #include "netgrok.h"
 
-// definitions
-/* -------------------------------------------------------------------------- */
+// definitions and global variables
+// -----------------------------------------------------------------------------
 // struct that stores details about each connection
-/* -------------------------------------------------------------------------- */
-#define CONNECTION_SIZE 8
-enum {
-	SRC_IP = 0, SRC_PORT = 1, DST_IP = 2, DST_PORT = 3,
-	BYTES  = 4, PROTOCOL = 5, HOST   = 6, REFERER  = 7
+// ---------------------------------------------------------------------------
+struct socket_address {char *ip_str; char *port_str;};
+typedef struct socket_address sock_addr_t;
+
+struct connection_context {
+	sock_addr_t src;   sock_addr_t dst;
+	size_t      size;  char        *protocol;
 };
-#define IP_MAX_LEN 40
-#define INT_MAX_LEN 6
-#define PROTOCOL_MAX_LEN 12
-#define HOST_MAX_LEN 64
-#define REFERER_MAX_LEN 2048
-// netgrok.h: typedef struct connection connection_t;
+typedef struct connection_context conn_ctx_t;
+
 struct connection {
-	char src_ip[IP_MAX_LEN]; char src_port[INT_MAX_LEN];
-	char dst_ip[IP_MAX_LEN]; char dst_port[INT_MAX_LEN];
-	char bytes[INT_MAX_LEN]; char protocol[PROTOCOL_MAX_LEN];
-	char host[HOST_MAX_LEN]; char referer[REFERER_MAX_LEN];
+	conn_ctx_t *ctx;
+	char *time_str;
+	struct {char *host; char *referer;} http;
 };
-/* -------------------------------------------------------------------------- */
+// netgrok.h: typedef struct connection conn_t;
+// ---------------------------------------------------------------------------
 
-// headers that netgrok() looks for in connection content
-/* -------------------------------------------------------------------------- */
-#define HEADERS_TOTAL 2
-enum {HOST_HEADER = 0, REFERER_HEADER = 1};
-static const char *headers[HEADERS_TOTAL] = {"host:", "referer:"};
-/* -------------------------------------------------------------------------- */
-
-// text lines
-/* -------------------------------------------------------------------------- */
-#define LINE_MAX_LEN 4096
+// string lines
+// ---------------------------------------------------------------------------
 static const char *LINE_END = "\r\n";
-/* -------------------------------------------------------------------------- */
+// ---------------------------------------------------------------------------
 
-// socket for netgrok to publish its JSON dumps to
-/* -------------------------------------------------------------------------- */
+// inter-process socket for netgrok to publish its JSON dumps to
+// ---------------------------------------------------------------------------
 #define ENDPOINT "ipc://netgrok_socket"
-static void *context;
+static void *zmq_context;
 static void *publisher_socket;
 
 // for interrupt handler
-/* -------------------------------------------------------------------------- */
+// -------------------------------------------------------------------------
 #define NO_FLAGS 0
 static struct sigaction signal_action;
-/* -------------------------------------------------------------------------- */
-/* -------------------------------------------------------------------------- */
-
-// log.h: typedef struct log_content_ctx log_content_ctx_t;
-/* -------------------------------------------------------------------------- */
-struct log_content_ctx {
-	unsigned int open: 1;
-	union {
-		struct {char *header_req; char *header_resp;} file;
-		struct {int fd; char *filename;} dir;
-		struct {int fd; char *filename;} spec;
-	} u;
-};
-/* -------------------------------------------------------------------------- */
-/* -------------------------------------------------------------------------- */
+// -------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 
 
-// NetGrok
-/* -------------------------------------------------------------------------- */
-// main function
-/* -------------------------------------------------------------------------- */
-int netgrok(log_content_ctx_t *ctx, logbuf_t *lb) {
-	connection_t session;
-	char json[LINE_MAX_LEN];
+// main NetGrok function
+// -----------------------------------------------------------------------------
+int netgrok(void *connection_context, unsigned char *content) {
+	conn_t *connection;
+	// char *json_str;
 
-	readAddresses(ctx -> u.file.header_resp, &session);
-	interpretProtocol(&session);
-	readHeaders(lb -> buf, lb -> sz, &session);
-	sessToJSON(&session, json);
-	publish(json, strlen(json));
+	connection = (conn_t *) malloc(sizeof(struct connection));
+	connection -> time_str = (char *) malloc(sizeof(char) * TIME_STR_LEN);
+	// connection -> http.host = (char *) malloc(sizeof(char) * HOST_MAX_LEN);
+	// connection -> http.referer = (char *) malloc(sizeof(char) * REFERER_MAX_LEN);
+	// json_str = (char *) malloc(sizeof(char) * LINE_MAX_LEN);
+	char host[HOST_MAX_LEN] ;
+	char referer[REFERER_MAX_LEN];
+	char json_str[LINE_MAX_LEN];
+
+	connection -> http.host = host;
+	connection -> http.referer = referer;
+
+	assert(recordTime(connection -> time_str) == 0);
+	connection -> ctx = (conn_ctx_t *) connection_context;
+	assert(readHeaders(content, connection -> ctx -> size, connection) == 0);
+	assert(getJsonStr(connection, json_str) == 0);
+	assert(publish(json_str, strlen(json_str)) == 0);
+	printf("%s\n", json_str);
+
+	// free(json_str);
+	// free(connection -> http.referer);
+	// free(connection -> http.host);
+	free(connection -> time_str);
+	free(connection);
 
 	return 0; // success
 }
-/* -------------------------------------------------------------------------- */
+// -----------------------------------------------------------------------------
 
-// temporary solution for finding IP addresses and port numbers for connections
-// by taking information from log file names; does not actually show direction
-// of data flow for each session
-/* -------------------------------------------------------------------------- */
-void readAddresses(char *filepath, connection_t *session) {
-	char filename[LINE_MAX_LEN];
-	char *str, *next_str, *prev_str;
 
-	strncpy(filename, filepath, LINE_MAX_LEN);
-	filename[LINE_MAX_LEN - 1] = '\0'; // in case null terminator not found
+// get the current time and write it into the connection struct
+// -----------------------------------------------------------------------------
+int recordTime(char *time_str) {
+	time_t timer;
+	struct tm time_struct;
 
-	// filename: dir/dir/timestamp-src_ip,src_port-dst_ip,dst_port.log
-	prev_str = NULL;
-	str = strtok_r(filename, "/", &next_str);
-	while (str != NULL) {
-		prev_str = str;
-		str = strtok_r(NULL, "/", &next_str);
-	}
+	timer = time(NULL);
+	localtime_r(&timer, &time_struct);
 
-	// prev_str: timestamp-src_ip,src_port-dst_ip,dst_port.log
-	if (prev_str != NULL) {
-		str = strtok_r(prev_str, "-", &next_str); // str: timestamp
+	// TIME_FORMAT == "%Y-%m-%d %H:%M:%S" == "yyyy-mm-dd HH:mm:ss"
+	strftime(time_str, TIME_STR_LEN, TIME_FORMAT, &time_struct);
 
-		str = strtok_r(NULL, ",", &next_str); // str: src_ip
-		strncpy(session -> src_ip, str, IP_MAX_LEN);
-		session -> src_ip[IP_MAX_LEN - 1] = '\0';
-
-		str = strtok_r(NULL, "-", &next_str); // str: src_port
-		strncpy(session -> src_port, str, INT_MAX_LEN);
-		session -> src_port[INT_MAX_LEN - 1] = '\0';
-
-		str = strtok_r(NULL, ",", &next_str); // str: dst_ip
-		strncpy(session -> dst_ip, str, IP_MAX_LEN);
-		session -> dst_ip[IP_MAX_LEN - 1] = '\0';
-
-		str = strtok_r(NULL, ".", &next_str); // str: dst_port
-		strncpy(session -> dst_port, str, INT_MAX_LEN);
-		session -> dst_port[INT_MAX_LEN - 1] = '\0';
-	}
+	return 0;
 }
-/* -------------------------------------------------------------------------- */
+// -----------------------------------------------------------------------------
 
-// temporary solution for finding the application layer protocol being used
-// based on the port numbers used in the connection
-/* -------------------------------------------------------------------------- */
-void interpretProtocol(connection_t *session) {
-	unsigned int port;
-	enum {HTTP = 80, HTTPS = 443};
-
-	port = atoi(session -> dst_port);
-
-	switch (port) {
-		case HTTP: strncpy(session -> protocol, "http", PROTOCOL_MAX_LEN); break;
-		case HTTPS: strncpy(session -> protocol, "https", PROTOCOL_MAX_LEN); break;
-		default: strncpy(session -> protocol, "unknown", PROTOCOL_MAX_LEN); break;
-	}
-}
-/* -------------------------------------------------------------------------- */
-
-// reads from HTTP headers; for now, assumes content contains HTTP
-/* -------------------------------------------------------------------------- */
-void readHeaders(unsigned char *buf, ssize_t bufsize, connection_t *session) {
+/* reads from HTTP content, checking for headers and modifying the connection
+struct to include the headers we're looking for (protocol, host, and referer) */
+// -----------------------------------------------------------------------------
+int readHeaders(unsigned char *buf, ssize_t bufsize, conn_t *connection) {
 	FILE *content;
 	ssize_t bytes_read;
 	char *line;
@@ -158,125 +115,155 @@ void readHeaders(unsigned char *buf, ssize_t bufsize, connection_t *session) {
 
 	content = tmpfile();
 	bytes_read = fwrite(buf, sizeof(char), bufsize, content);
-	snprintf(session -> bytes, INT_MAX_LEN, "%li", bytes_read);
+	assert(bytes_read == bufsize);
+	rewind(content);
 	line = (char *) malloc(sizeof(char) * LINE_MAX_LEN);
 
-	rewind(content);
+	static char  *headers[]    = {"http*", "host:", "referer:"};
+	static size_t header_len[] = {   5,       5,        8     };
+	int           seen[]       = {   0,       0,        0     };
+	int seen_protocol = 0;
+	static int num_headers = sizeof(headers) / sizeof(char *);
+	enum {HTTP_HEADER = 0, HOST_HEADER = 1, REFERER_HEADER = 2};
 
+	// parse the first token of each line to see if it is a header we care about
 	while (fgets(line, LINE_MAX_LEN, content) && isprint(line[0])) {
-		strncpy(line_copy, line, LINE_MAX_LEN); // line includes null terminator
+		strncpy(line_copy, line, LINE_MAX_LEN);
+		line_copy[LINE_MAX_LEN - 1] = '\0'; // line includes null terminator
 		str = strtok_r(line_copy, " ", &next_str);
 
-		if (str != NULL) {
+		int header = 0;
+
+		// compare the first string token to each type of header we are looking for
+		while (str != NULL && header < num_headers) {
 			str_len = strlen(str);
 
-			for (int h = 0; h < HEADERS_TOTAL; h++) {
-				if (areSameStrings(str, headers[h], str_len)) {
-					switch (h) {
+			if (!seen[header] && header_len[header] <= str_len) {
+				str_len = header_len[header];
+
+				if (areSameStrings(headers[header], str, str_len)) {
+					str = strtok_r(NULL, LINE_END, &next_str);
+
+					switch (header) {
+						case HTTP_HEADER:
+							if (strncmp(connection -> ctx -> protocol, "ssl\0", 4) == 0)
+								strncpy(connection -> ctx -> protocol, "https\0", 6);
+							else strncpy(connection -> ctx -> protocol, "http\0", 5);
+							seen_protocol = 1;
+							break;
 						case HOST_HEADER:
-						 	str = strtok_r(NULL, LINE_END, &next_str);
-							strncpy(session -> host, str, HOST_MAX_LEN);
-							session -> host[HOST_MAX_LEN - 1] = '\0';
+							strncpy(connection -> http.host, str, HOST_MAX_LEN);
 							break;
 						case REFERER_HEADER:
-							str = strtok_r(NULL, LINE_END, &next_str);
-							strncpy(session -> referer, str, REFERER_MAX_LEN);
-							session -> host[REFERER_MAX_LEN - 1] = '\0';
+							strncpy(connection -> http.referer, str, REFERER_MAX_LEN);
 							break;
 					}
+
+					seen[header] = 1;
 					break;
 				}
 			}
+
+			// if a protocol header is not yet found, parse the rest of the line
+			if (!seen_protocol && header == num_headers - 1) {
+				str = strtok_r(NULL, " ", &next_str);
+				header = 0;
+			}
+			else header++;
 		}
+
+		// if every header has been found, stop parsing
+		if (seen[HTTP_HEADER] && seen[HOST_HEADER] && seen[REFERER_HEADER]) break;
 	}
+
+	// if (seen[HTTP_HEADER]) printf("conntent:\n%s\n", buf);
+
+	if (!seen[HOST_HEADER]) connection -> http.host = NULL;
+	if (!seen[REFERER_HEADER]) connection -> http.referer = NULL;
 
 	free(line);
 	fclose(content);
+	return 0;
 }
-/* -------------------------------------------------------------------------- */
+// -----------------------------------------------------------------------------
 
-// compares two strings; case insensitive
-/* -------------------------------------------------------------------------- */
+/* compares two strings; case insensitive; if both strings are same up to a '*'
+character, the strings are considered to be the same */
+// -----------------------------------------------------------------------------
 int areSameStrings(const char *lhs, const char *rhs, int len) {
 	for (int i = 0; i < len; i++) {
-		if (tolower(lhs[i]) != tolower(rhs[i])) return 0; // false
+		if (tolower(lhs[i]) != tolower(rhs[i])) {
+			if (lhs[i] == '*' || rhs[i] == '*') return 1; // true
+			else return 0; // false
+		}
 	}
 	return 1; // true
 }
-/* -------------------------------------------------------------------------- */
+// -----------------------------------------------------------------------------
 
 // write a string (in JSON format) of information about the connection
-/* -------------------------------------------------------------------------- */
-void sessToJSON(connection_t *session, char *buf) {
-	char *names[CONNECTION_SIZE];
-	char *values[CONNECTION_SIZE] = {
-		session -> src_ip,
-		session -> src_port,
-		session -> dst_ip,
-		session -> dst_port,
-		session -> bytes,
-		session -> protocol,
-		session -> host,
-		session -> referer
+// -----------------------------------------------------------------------------
+int getJsonStr(conn_t *connection, char *json_str) {
+	char *names[] = {
+		"src_ip", "src_port", "dst_ip", "dst_port",
+		"size",   "protocol", "host",   "referer",  "time"
 	};
-	char json_dump[LINE_MAX_LEN] = "";
+	char size_str[INT_STR_MAX_LEN];
+	snprintf(size_str, INT_STR_MAX_LEN, "%zu", connection -> ctx -> size);
+	char *values[] = {
+		connection -> ctx -> src.ip_str, connection -> ctx -> src.port_str,
+		connection -> ctx -> dst.ip_str, connection -> ctx -> dst.port_str,
+		size_str,                        connection -> ctx -> protocol,
+		connection -> http.host,         connection -> http.referer,
+		connection -> time_str
+	};
+	char buf[LINE_MAX_LEN] = "";
 
-	// This is an ugly, tedious way to make a JSON dump, but whatever. I'll make a
-	// cleaner, simpler way later. Maybe.
-	/* ------------------------------------------------------------------------ */
-	names[SRC_IP]   = "src_ip";
-	names[SRC_PORT] = "src_port";
-	names[DST_IP]   = "dst_ip";
-	names[DST_PORT] = "dst_port";
-	names[BYTES]    = "bytes";
-	names[PROTOCOL] = "protocol";
-	names[HOST]     = NULL;
-	names[REFERER]  = NULL;
-
-	if (session -> host[0]    != '\0') names[HOST]    = "host";
-	if (session -> referer[0] != '\0') names[REFERER] = "referer";
-
-	strncat(json_dump, "{\"", 2);
-	strncat(json_dump, names[0], REFERER_MAX_LEN);
-	strncat(json_dump, "\": \"", 4);
-	strncat(json_dump, values[0], REFERER_MAX_LEN);
-	strncat(json_dump, "\"", 1);
-	for (int i = 1; i < CONNECTION_SIZE; i++) {
-		if (names[i] != NULL) {
-			strncat(json_dump, ", \"", 3);
-			strncat(json_dump, names[i], REFERER_MAX_LEN);
-			strncat(json_dump, "\": \"", 4);
-			strncat(json_dump, values[i], REFERER_MAX_LEN);
-			strncat(json_dump, "\"", 1);
+	strncat(buf, "{", 1);
+	assert(addToJsonStr(names[0], values[0], buf) == 0);
+	int num_pairs = sizeof(names) / sizeof(char *);
+	for (int i = 1; i < num_pairs; i++) {
+		if (values[i] != NULL) {
+			strncat(buf, ", ", 2);
+			assert(addToJsonStr(names[i], values[i], buf) == 0);
 		}
 	}
-	strncat(json_dump, "}\0", 2);
-	/* ------------------------------------------------------------------------ */
-	printf("%s\n", json_dump); // for debugging
+	strncat(buf, "}\0", 2);
 
-	strncpy(buf, json_dump, LINE_MAX_LEN);
+	strncpy(json_str, buf, LINE_MAX_LEN);
+
+	return 0;
 }
-/* -------------------------------------------------------------------------- */
+
+int addToJsonStr(char *name, char *value, char *buf) {
+	strncat(buf, "\"", 1);
+	strncat(buf, name, strlen(name));
+	strncat(buf, "\": \"", 4);
+	strncat(buf, value, strlen(value));
+	strncat(buf, "\"", 1);
+	return 0;
+}
+// -----------------------------------------------------------------------------
 
 // publish using ZMQ
-/* -------------------------------------------------------------------------- */
+// -----------------------------------------------------------------------------
 int publish(char *buf, int len) {
 	// setup for interrupt handling
-	/* ------------------------------------------------------------------------ */
+	// -------------------------------------------------------------------------
 	signal_action.sa_handler = interruptHandler;
 	signal_action.sa_flags = NO_FLAGS;
 	sigemptyset(&signal_action.sa_mask);
 	sigaction(SIGINT, &signal_action, NULL);
 	sigaction(SIGTERM, &signal_action, NULL);
-	/* ------------------------------------------------------------------------ */
+	// -------------------------------------------------------------------------
 
-	if (!context) {
-		context = zmq_ctx_new();
-		assert(context);
+	if (!zmq_context) {
+		zmq_context = zmq_ctx_new();
+		assert(zmq_context);
 	}
 
 	if (!publisher_socket) {
-		publisher_socket = zmq_socket(context, ZMQ_PUB);
+		publisher_socket = zmq_socket(zmq_context, ZMQ_PUB);
 		assert(publisher_socket);
 		assert(zmq_bind(publisher_socket, ENDPOINT) == 0);
 	}
@@ -285,15 +272,14 @@ int publish(char *buf, int len) {
 
 	return 0;
 }
-/* -------------------------------------------------------------------------- */
 
 // clean up the ZMQ stuff if the program is stopped
-/* -------------------------------------------------------------------------- */
+// ---------------------------------------------------------------------------
 void interruptHandler(int sig) {
 	printf("\nsignal: %d; closing publisher socket now\n", sig);
 	if (publisher_socket) zmq_close(publisher_socket);
-	if (context) zmq_ctx_destroy(context);
+	if (zmq_context) zmq_ctx_destroy(zmq_context);
 	exit(sig);
 }
-/* -------------------------------------------------------------------------- */
-/* -------------------------------------------------------------------------- */
+// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------

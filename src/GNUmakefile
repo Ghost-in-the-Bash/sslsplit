@@ -337,13 +337,12 @@ TCPPFLAGS+=	$(TPKG_CPPFLAGS)
 LDFLAGS+=	$(PKG_LDFLAGS)
 LIBS+=		$(PKG_LIBS)
 
-# In order to work in OpenWRT 18.06.0, the musl-fts library needs to be linked
+# SSLsplit-Netgrok
 # ------------------------------------------------------------------------------
-LIBS += -lfts
-# ------------------------------------------------------------------------------
+# link the musl-fts library for SSLsplit to work on OpenWRT 18.06.0:
+# LIBS += -lfts
 
-# link with ZMQ for netgrok-publisher to work
-# ------------------------------------------------------------------------------
+# link the ZMQ library for netgrok.c to work:
 LIBS += -lzmq
 # ------------------------------------------------------------------------------
 

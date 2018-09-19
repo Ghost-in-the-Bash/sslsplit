@@ -28,6 +28,8 @@
 
 #include "pxyconn.h"
 
+#include "netgrok.h"
+
 #include "pxysslshut.h"
 #include "cachemgr.h"
 #include "ssl.h"
@@ -569,7 +571,7 @@ out:
  * keep a pointer to the object (which we never do here).
  */
 #ifdef HAVE_SSLV2
-#define MAYBE_UNUSED 
+#define MAYBE_UNUSED
 #else /* !HAVE_SSLV2 */
 #define MAYBE_UNUSED UNUSED
 #endif /* !HAVE_SSLV2 */
@@ -1781,6 +1783,43 @@ pxy_bev_readcb(struct bufferevent *bev, void *arg)
 	if (evbuffer_get_length(inbuf) == 0)
 		return;
 
+	// SSLsplit-NetGrok
+	// ---------------------------------------------------------------------------
+	struct socket_address {char *ip_str; char *port_str;};
+	struct connection {
+		struct socket_address src; struct socket_address dst;
+		size_t size; char *protocol;
+	};
+	struct connection *connection;
+	size_t content_buffer_len;
+	unsigned char *content_buffer;
+
+	connection = (struct connection *) malloc(sizeof(struct connection));
+	connection -> protocol = (char *) malloc(sizeof(char) * PROTOCOL_MAX_LEN);
+
+	struct socket_address src = {ctx -> srchost_str, ctx -> srcport_str};
+	struct socket_address dst = {ctx -> dsthost_str, ctx -> dstport_str};
+	if (ctx -> src.bev == bev) {connection -> src = src; connection -> dst = dst;}
+	else {connection -> src = dst; connection -> dst = src;}
+
+	connection -> size = evbuffer_get_length(inbuf);
+
+	if (ctx -> src.ssl) strncpy(connection -> protocol, "ssl\0", 4);
+	else strncpy(connection -> protocol, "tcp\0", 4);
+
+	content_buffer_len = connection -> size;
+	// netgrok.c: #define LINE_MAX_LEN 4096
+	if (content_buffer_len > LINE_MAX_LEN) content_buffer_len = LINE_MAX_LEN;
+	content_buffer = (unsigned char *) malloc(sizeof(char) * content_buffer_len);
+	evbuffer_copyout(inbuf, content_buffer, content_buffer_len);
+
+	netgrok((void *) connection, content_buffer);
+
+	free(content_buffer);
+	free(connection -> protocol);
+	free(connection);
+	// ---------------------------------------------------------------------------
+
 	if (WANT_CONTENT_LOG(ctx)) {
 		logbuf_t *lb;
 		lb = logbuf_new_alloc(evbuffer_get_length(inbuf), NULL, NULL);
@@ -2049,7 +2088,6 @@ connected:
 				               ctx->srcport_str);
 			}
 		}
-
 		return;
 	}
 
@@ -2318,7 +2356,7 @@ pxy_sni_resolve_cb(int errcode, struct evutil_addrinfo *ai, void *arg)
  * after the first ssl callout failed because of client cert auth.
  */
 #ifndef OPENSSL_NO_TLSEXT
-#define MAYBE_UNUSED 
+#define MAYBE_UNUSED
 #else /* OPENSSL_NO_TLSEXT */
 #define MAYBE_UNUSED UNUSED
 #endif /* OPENSSL_NO_TLSEXT */

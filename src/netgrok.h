@@ -1,30 +1,36 @@
 #ifndef NETGROK_H
 #define NETGROK_H
 
-#include "log.h"
-#include "logbuf.h"
-
 #include <zmq.h>
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <time.h>
+
 #include <assert.h>
 #include <signal.h>
 
-typedef struct connection connection_t;
+#define LINE_MAX_LEN 4096
+#define IP_STR_MAX_LEN 40 // ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff.
+#define INT_STR_MAX_LEN 6 // 65535.
+#define PROTOCOL_MAX_LEN 12
+#define HOST_MAX_LEN 64
+#define REFERER_MAX_LEN 2048
+#define TIME_STR_LEN 20
+#define TIME_FORMAT "%Y-%m-%d %H:%M:%S" // yyyy-mm-dd HH:mm:ss.
+typedef struct connection conn_t;
 
-// log.h: typedef struct log_content_ctx log_content_ctx_t;
-// logbuf.h: struct logbuf; typedef struct logbuf logbuf_t;
+int netgrok(void *connection_context, unsigned char *content);
 
-int netgrok(log_content_ctx_t *ctx, logbuf_t *lb);
+int recordTime(char *time_str);
 
-void readAddresses(char *filepath, connection_t *session);
-void interpretProtocol(connection_t *session);
-void readHeaders(unsigned char *buf, ssize_t bufsize, connection_t *session);
+int readHeaders(unsigned char *buf, ssize_t bufsize, conn_t *connection);
 int areSameStrings(const char *lhs, const char *rhs, int len);
-void sessToJSON(connection_t *session, char *buf);
+
+int getJsonStr(conn_t *connection, char *json_str);
+int addToJsonStr(char *name, char *value, char *json_str);
 
 int publish(char *buf, int len);
 void interruptHandler(int sig);

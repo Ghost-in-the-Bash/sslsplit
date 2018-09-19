@@ -34,10 +34,6 @@
 #include "privsep.h"
 #include "defaults.h"
 
-/* -------------------------------------------------------------------------- */
-#include "netgrok.h"
-/* -------------------------------------------------------------------------- */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -680,26 +676,16 @@ errout:
 int
 log_content_submit(log_content_ctx_t *ctx, logbuf_t *lb, int is_request)
 {
-	// unsigned long prepflags = 0; // not needed for sslsplit-netgrok
+	unsigned long prepflags = 0;
 
 	if (!ctx->open) {
 		log_err_printf("log_content_submit called on closed ctx\n");
 		return -1;
 	}
 
-	// send log context and log buffer to netgrok.c instead of logger.c
-	/* ------------------------------------------------------------------------ */
-	return netgrok(ctx, lb);
-	/* ------------------------------------------------------------------------ */
-
-	// default code replaced by netgrok() function
-	/* ------------------------------------------------------------------------ */
-	/*
 	if (is_request)
 		prepflags |= PREPFLAG_REQUEST;
 	return logger_submit(content_log, ctx, prepflags, lb);
-	*/
-	/* ------------------------------------------------------------------------ */
 }
 
 int

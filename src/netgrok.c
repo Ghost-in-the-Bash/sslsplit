@@ -54,17 +54,12 @@ static struct sigaction signal_action;
 // -----------------------------------------------------------------------------
 int netgrok(void *connection_context, unsigned char *content) {
 	conn_t *connection;
-	// char *json_str;
+	char json_str[LINE_MAX_LEN];
+	char host[HOST_MAX_LEN] ;
+	char referer[REFERER_MAX_LEN];
 
 	connection = (conn_t *) malloc(sizeof(struct connection));
 	connection -> time_str = (char *) malloc(sizeof(char) * TIME_STR_LEN);
-	// connection -> http.host = (char *) malloc(sizeof(char) * HOST_MAX_LEN);
-	// connection -> http.referer = (char *) malloc(sizeof(char) * REFERER_MAX_LEN);
-	// json_str = (char *) malloc(sizeof(char) * LINE_MAX_LEN);
-	char host[HOST_MAX_LEN] ;
-	char referer[REFERER_MAX_LEN];
-	char json_str[LINE_MAX_LEN];
-
 	connection -> http.host = host;
 	connection -> http.referer = referer;
 
@@ -75,9 +70,6 @@ int netgrok(void *connection_context, unsigned char *content) {
 	assert(publish(json_str, strlen(json_str)) == 0);
 	printf("%s\n", json_str);
 
-	// free(json_str);
-	// free(connection -> http.referer);
-	// free(connection -> http.host);
 	free(connection -> time_str);
 	free(connection);
 

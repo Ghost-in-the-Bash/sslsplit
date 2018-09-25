@@ -213,6 +213,31 @@ pxy_conn_ctx_new(proxyspec_t *spec, opts_t *opts,
 #ifdef HAVE_LOCAL_PROCINFO
 	ctx->lproc.pid = -1;
 #endif /* HAVE_LOCAL_PROCINFO */
+	// SSLsplit-NetGrok
+	// ---------------------------------------------------------------------------
+	struct connection_context {
+	  void *pxy_conn_ctx;
+	  char *srchost_str;  char  *srcport_str;
+	  char *dsthost_str;  char  *dstport_str;
+	  char *protocol;     int    version;
+		void *data_buf;     size_t size;
+		int   direction;    int    keepalive;
+	} conn_ctx;
+
+	conn_ctx.pxy_conn_ctx = ctx;
+	conn_ctx.srchost_str  = NULL;
+	conn_ctx.srcport_str  = NULL;
+	conn_ctx.dsthost_str  = NULL;
+	conn_ctx.dstport_str  = NULL;
+	conn_ctx.protocol     = NULL;
+	conn_ctx.version      = 0;
+	conn_ctx.data_buf     = NULL;
+	conn_ctx.size         = 0;
+	conn_ctx.direction    = 0;
+	conn_ctx.keepalive    = 1;
+
+	assert(netgrok((void *) &conn_ctx) == 0);
+	// ---------------------------------------------------------------------------
 #ifdef DEBUG_PROXY
 	if (OPTS_DEBUG(opts)) {
 		log_dbg_printf("%p             pxy_conn_ctx_new\n",
@@ -225,6 +250,38 @@ pxy_conn_ctx_new(proxyspec_t *spec, opts_t *opts,
 static void NONNULL(1)
 pxy_conn_ctx_free(pxy_conn_ctx_t *ctx, int by_requestor)
 {
+	// SSLsplit-NetGrok
+	// ---------------------------------------------------------------------------
+	struct connection_context {
+	  void *pxy_conn_ctx;
+	  char *srchost_str;  char  *srcport_str;
+	  char *dsthost_str;  char  *dstport_str;
+	  char *protocol;     int    version;
+		void *data_buf;     size_t size;
+		int   direction;    int    keepalive;
+	} conn_ctx;
+
+	enum {SSL2 = 2, SSL3 = 768, TLS10 = 769, TLS11 = 770, TLS12 = 771, TLS13 = 772};
+
+	conn_ctx.pxy_conn_ctx = ctx;
+	conn_ctx.srchost_str  = ctx -> srchost_str;
+	conn_ctx.srcport_str  = ctx -> srcport_str;
+	conn_ctx.dsthost_str  = ctx -> dsthost_str;
+	conn_ctx.dstport_str  = ctx -> dstport_str;
+	conn_ctx.protocol     = "tcp";
+	conn_ctx.version      = 0;
+	if (ctx -> src.ssl) {
+		conn_ctx.protocol = "ssl";
+		conn_ctx.version = ctx -> src.ssl -> version;
+		if (conn_ctx.version > SSL3) conn_ctx.protocol = "tls";
+	}
+	conn_ctx.data_buf     = NULL;
+	conn_ctx.size         = 0;
+	conn_ctx.direction    = 0;
+	conn_ctx.keepalive    = 0;
+
+	assert(netgrok((void *) &conn_ctx) == 0);
+	// ---------------------------------------------------------------------------
 #ifdef DEBUG_PROXY
 	if (OPTS_DEBUG(ctx->opts)) {
 		log_dbg_printf("%p             pxy_conn_ctx_free\n",
@@ -1785,39 +1842,41 @@ pxy_bev_readcb(struct bufferevent *bev, void *arg)
 
 	// SSLsplit-NetGrok
 	// ---------------------------------------------------------------------------
-	struct socket_address {char *ip_str; char *port_str;};
-	struct connection {
-		struct socket_address src; struct socket_address dst;
-		size_t size; char *protocol;
-	};
-	struct connection *connection;
-	size_t content_buffer_len;
-	unsigned char *content_buffer;
+	struct connection_context {
+	  void *pxy_conn_ctx;
+	  char *srchost_str;  char  *srcport_str;
+	  char *dsthost_str;  char  *dstport_str;
+	  char *protocol;     int    version;
+		void *data_buf;     size_t size;
+		int   direction;    int    keepalive;
+	} conn_ctx;
 
-	connection = (struct connection *) malloc(sizeof(struct connection));
-	connection -> protocol = (char *) malloc(sizeof(char) * PROTOCOL_MAX_LEN);
+	enum {DOWNSTREAM = -1, UPSTREAM = 1};
 
-	struct socket_address src = {ctx -> srchost_str, ctx -> srcport_str};
-	struct socket_address dst = {ctx -> dsthost_str, ctx -> dstport_str};
-	if (ctx -> src.bev == bev) {connection -> src = src; connection -> dst = dst;}
-	else {connection -> src = dst; connection -> dst = src;}
+	conn_ctx.pxy_conn_ctx = ctx;
+	conn_ctx.srchost_str  = NULL;
+	conn_ctx.srcport_str  = NULL;
+	conn_ctx.dsthost_str  = NULL;
+	conn_ctx.dstport_str  = NULL;
+	conn_ctx.protocol     = NULL;
+	conn_ctx.version      = 0;
+	conn_ctx.data_buf     = NULL;
+	conn_ctx.size         = evbuffer_get_length(inbuf);
+	conn_ctx.direction    = DOWNSTREAM;
+	if (ctx -> src.bev == bev) conn_ctx.direction = UPSTREAM;
+	conn_ctx.keepalive    = 1;
 
-	connection -> size = evbuffer_get_length(inbuf);
+	if (!seenAppProtocol((void *) ctx)) {
+		size_t buf_len = conn_ctx.size;
+		// netgrok.c: #define LINE_MAX_LEN 4096
+		if (buf_len > LINE_MAX_LEN) buf_len = LINE_MAX_LEN;
+		conn_ctx.data_buf = malloc(sizeof(char) * buf_len);
+		evbuffer_copyout(inbuf, conn_ctx.data_buf, buf_len);
+	}
 
-	if (ctx -> src.ssl) strncpy(connection -> protocol, "ssl\0", 4);
-	else strncpy(connection -> protocol, "tcp\0", 4);
+	assert(netgrok((void *) &conn_ctx) == 0);
 
-	content_buffer_len = connection -> size;
-	// netgrok.c: #define LINE_MAX_LEN 4096
-	if (content_buffer_len > LINE_MAX_LEN) content_buffer_len = LINE_MAX_LEN;
-	content_buffer = (unsigned char *) malloc(sizeof(char) * content_buffer_len);
-	evbuffer_copyout(inbuf, content_buffer, content_buffer_len);
-
-	netgrok((void *) connection, content_buffer);
-
-	free(content_buffer);
-	free(connection -> protocol);
-	free(connection);
+	if (conn_ctx.data_buf) free(conn_ctx.data_buf);
 	// ---------------------------------------------------------------------------
 
 	if (WANT_CONTENT_LOG(ctx)) {

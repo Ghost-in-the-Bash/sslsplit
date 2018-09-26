@@ -1,5 +1,5 @@
 How to Use SSLsplit-NetGrok
-Last edited: 2018-09-14
+Last edited: 2018-09-26
 --------------------------------------------------------------------------------
 Description
 --------------------------------------------------------------------------------
@@ -11,8 +11,7 @@ in pxyconn.c. It then outputs info about the connections in JSON format to an
 inter-process socket.
 
 The following files of the original SSLsplit have been modified for NetGrok:
-- pxyconn.c: pxy_bev_readcb(): starting at line 1783
-  - code that prepares for netgrok() and calls netgrok() in netgrok.c
+- pxyconn.c
 - GNUmakefile: starting at line 340
   - musl-fts library link for OpenWRT
   - zmq library link for netgrok.c

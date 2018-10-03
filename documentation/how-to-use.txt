@@ -327,8 +327,9 @@ git checkout <version>
 
 
 2. Select the relevant packages in the make menuconfig:
-  a. LuCI    > Collections      > luci
-  a. Network > sslsplit-netgrok
+  a. LuCI      > Collections      > luci
+  b. Network   > sslsplit-netgrok
+  c. Utilities > openssl-util
 
 
 3. Include custom files:

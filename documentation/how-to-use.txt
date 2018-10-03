@@ -10,10 +10,11 @@ The netgrok() function in netgrok.c takes input passed in from pxyconn.c. It
 then outputs info about the connections in JSON format to a TCP socket.
 
 The following files of the original SSLsplit have been modified for NetGrok:
-- pxyconn.c
-- GNUmakefile: starting at line 340
-  - musl-fts library link for OpenWRT
-  - zmq library link for netgrok.c
+- /
+  - pxyconn.c
+  - GNUmakefile: starting at line 340
+    - musl-fts library link for OpenWRT
+    - zmq library link for netgrok.c
 
 The following additions were made to SSLsplit for NetGrok:
 - /

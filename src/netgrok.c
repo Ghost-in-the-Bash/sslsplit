@@ -58,7 +58,7 @@ static const char *LINE_END = "\r\n";
 
 // inter-process socket for netgrok to publish its JSON dumps to
 // ---------------------------------------------------------------------------
-#define ENDPOINT "ipc://netgrok_socket"
+#define ENDPOINT "tcp://127.0.0.1:7188"
 static void *zmq_context;
 static void *publisher_socket;
 
@@ -109,7 +109,7 @@ int netgrok(conn_ctx_t *conn_ctx) {
     json_str = (char *) malloc(sizeof(char) * LINE_MAX_LEN);
     assert(getJsonStr(session, json_str) == 0);
     assert(publish(json_str, strlen(json_str)) == 0);
-    printf("%s\n", json_str);
+    // printf("%s\n", json_str);
     free(json_str);
 
     assert(delSession(session) == 0);

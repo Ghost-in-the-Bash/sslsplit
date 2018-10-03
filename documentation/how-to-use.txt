@@ -1,14 +1,13 @@
 How to Use SSLsplit-NetGrok
-Last edited: 2018-09-26
+Last edited: 2018-10-03
 --------------------------------------------------------------------------------
 Description
 --------------------------------------------------------------------------------
 All examples here use SSLsplit version 0.5.3.
 About SSLsplit: https://www.roe.ch/SSLsplit
 
-The netgrok() function in netgrok.c takes input passed in from pxy_bev_readcb()
-in pxyconn.c. It then outputs info about the connections in JSON format to an
-inter-process socket.
+The netgrok() function in netgrok.c takes input passed in from pxyconn.c. It
+then outputs info about the connections in JSON format to a TCP socket.
 
 The following files of the original SSLsplit have been modified for NetGrok:
 - pxyconn.c
@@ -52,7 +51,7 @@ this example, both the client and router were 64-bit Ubuntu Linux machines.
 
   a. Clone the GitHub repository:
 
-  git clone https://github.com/ghost-in-the-bash/sslsplit-netgrok sslsplit-netgrok
+  git clone https://github.com/ghost-in-the-bash/sslsplit-netgrok
 
   b. Next, install libevent and libssl so sslsplit can handle large numbers of
   ssl connections simultaneously:
@@ -61,7 +60,7 @@ this example, both the client and router were 64-bit Ubuntu Linux machines.
 
 
 1. Generate a Certificate Authority key and certificate. Eventually, this step
-will be automated on the OpenWRT router to generate a NetGrok CA key and
+might be automated on the OpenWRT router to generate a NetGrok CA key and
 certificate if they are not present. Generate a key and certificate in the
 sslsplit-netgrok/ directory:
 
@@ -102,14 +101,12 @@ openssl req -new -x509 -days 1826 -key netgrok.key -out netgrok.crt
 3. Run SSLsplit-NetGrok from the sslsplit-netgrok/src/ directory on the Ubuntu
 machine acting as the router:
 
-make clean
-make
-./sslsplit -S ../ -k ../netgrok.key -c ../netgrok.crt ssl 0.0.0.0 8443 tcp 0.0.0.0 8080
+  a. To see the JSON dumps, uncomment the print statement in netgrok().
+  b.
 
-The -S option would normally write the decrypted content of connections to log
-files. However, logger.c has been modified to not make logs at all, and log.c
-has been modified to direct content to netgrok.c. The netgrok() function dumps
-connections in JSON format to standard output.
+    make clean
+    make
+    ./sslsplit -k ../netgrok.key -c ../netgrok.crt ssl 0.0.0.0 8443 tcp 0.0.0.0 8080
 
 
 4. Configure the client's web browser (if the CA cert is not already installed):
@@ -203,19 +200,16 @@ For this example, SSLsplit-NetGrok was cross-compiled for OpenWRT 18.06.0 on a
 
 4. Prepare SSLsplit-NetGrok:
 
-  a. If there is still a key and certificate file in the sslsplit-netgrok/ dir,
-  delete them. They are not needed for cross-compiling.
-
-  b. Change an SSLsplit-NetGrok dependency to work with OpenWRT
+  a. Change an SSLsplit-NetGrok dependency to work with OpenWRT
     1. Edit the sslsplit-netgrok/src/GNUmakefile
-    2. Go to where I commented (line 340), "In order to work in OpenWRT 18.06.0,
-    the musl-fts library needs to be linked"
-    3. Uncomment the 'LIBS += -lfts'
+    2. Go to line 340
+    3. Uncomment the library additions
 
-  The Makefile in the sslsplit-netgrok/ directory already includes musl-fts.
+  The Makefile in the sslsplit-netgrok/ directory already includes musl-fts and
+  libzmq as dependencies.
 
 
-5. Create a package feed for SSLsplit-NetGrok:
+5. Create a package feed for SSLsplit-NetGrok (if not already created):
 
   a. Make the package feed source directory:
 
@@ -230,7 +224,7 @@ For this example, SSLsplit-NetGrok was cross-compiled for OpenWRT 18.06.0 on a
 
   cd openwrt
 
-  Edit feeds.conf.default to include the following line:
+  Edit feeds.conf to include the following line:
 
   src-link netgrok /home/<user>/netgrok
 
@@ -273,7 +267,31 @@ The package should be located in bin/packages/<architecture>/netgrok/.
 
 2: Installing and running the SSLsplit-NetGrok package on an OpenWRT router
 --------------------------------------------------------------------------------
-TODO
+0. Connect to the router
+1. Copy the .ipk file onto the OpenWRT router's user directory.
+2. Install the package:
+
+  opkg install sslsplit-netgrok_1.0-1_mips_24kc.ipk
+
+3. Set up the NAT to redirect packets to SSLsplit-NetGrok:
+  a. Type 192.168.1.1 into a web browser.
+  b. Network > Firewall > Custom Rules:
+
+  iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-ports 8080
+  iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-ports 8443
+  iptables -t nat -A PREROUTING -p tcp --dport 465 -j REDIRECT --to-ports 8443
+  iptables -t nat -A PREROUTING -p tcp --dport 587 -j REDIRECT --to-ports 8443
+  iptables -t nat -A PREROUTING -p tcp --dport 993 -j REDIRECT --to-ports 8443
+  iptables -t nat -A PREROUTING -p tcp --dport 5222 -j REDIRECT --to-ports 8080
+
+2. Run SSLsplit-NetGrok. Make sure you have the correct location of the key and
+certificate:
+
+  sslsplit -k netgrok.key -c netgrok.crt tcp 0.0.0.0
+
+3. To remove an iptable rule,
+
+  iptables -t nat -D <rule>
 --------------------------------------------------------------------------------
 
 
@@ -293,8 +311,8 @@ git checkout <version>
 ./scripts/feeds install luci
 
 1. Select the relevant packages in the make menuconfig:
-  a. LuCI -> Collections -> luci
-  a. Network -> sslsplit-netgrok
+  a. LuCI    > Collections      > luci
+  a. Network > sslsplit-netgrok
 
 2. Build the OpenWRT image. This will take some time:
 

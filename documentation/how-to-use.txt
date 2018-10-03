@@ -15,18 +15,24 @@ The following files of the original SSLsplit have been modified for NetGrok:
   - musl-fts library link for OpenWRT
   - zmq library link for netgrok.c
 
-The following additions were made to SSLsplit for NetGrok
-- new src/ directory
-  - all source files were moved into src/
-- /src/
-  - netgrok.c
-  - netgrok.h
-- new documentation/ directory
-- /documentation/
-  - how-to-use.txt
-  - sslsplit-0.5.3.1.txt
+The following additions were made to SSLsplit for NetGrok:
 - /
+  - documentation/
+    - how-to-use.txt
+    - sslsplit-0.5.3.1.txt
+
+  - src/
+    - netgrok.c
+    - netgrok.h
+    - (all source files from / were moved into src/)
+
   - Makefile
+
+  - openwrt-files/
+    - etc/
+      - firewall.user
+      - rc.local
+
 --------------------------------------------------------------------------------
 
 
@@ -62,7 +68,7 @@ this example, both the client and router were 64-bit Ubuntu Linux machines.
 1. Generate a Certificate Authority key and certificate. Eventually, this step
 might be automated on the OpenWRT router to generate a NetGrok CA key and
 certificate if they are not present. Generate a key and certificate in the
-sslsplit-netgrok/ directory:
+sslsplit-netgrok/openwrt-files/netgrok/ directory:
 
 openssl genrsa -out netgrok.key 4096
 openssl req -new -x509 -days 1826 -key netgrok.key -out netgrok.crt
@@ -88,17 +94,17 @@ openssl req -new -x509 -days 1826 -key netgrok.key -out netgrok.crt
 
   c. Configure NAT to redirect packets to ports that SSLsplit listens to:
 
-  sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-ports 8080
-  sudo iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-ports 8443
-  sudo iptables -t nat -A PREROUTING -p tcp --dport 465 -j REDIRECT --to-ports 8443
-  sudo iptables -t nat -A PREROUTING -p tcp --dport 587 -j REDIRECT --to-ports 8443
-  sudo iptables -t nat -A PREROUTING -p tcp --dport 993 -j REDIRECT --to-ports 8443
+  sudo iptables -t nat -A PREROUTING -p tcp --dport   80 -j REDIRECT --to-ports 8080
+  sudo iptables -t nat -A PREROUTING -p tcp --dport  443 -j REDIRECT --to-ports 8443
+  sudo iptables -t nat -A PREROUTING -p tcp --dport  465 -j REDIRECT --to-ports 8443
+  sudo iptables -t nat -A PREROUTING -p tcp --dport  587 -j REDIRECT --to-ports 8443
+  sudo iptables -t nat -A PREROUTING -p tcp --dport  993 -j REDIRECT --to-ports 8443
   sudo iptables -t nat -A PREROUTING -p tcp --dport 5222 -j REDIRECT --to-ports 8080
 
   These rules redirect HTTP, HTTPS, SMTP, IMAP, and WhatsApp packets.
 
 
-3. Run SSLsplit-NetGrok from the sslsplit-netgrok/src/ directory on the Ubuntu
+3. Run SSLsplit-NetGrok from the sslsplit-netgrok/ directory on the Ubuntu
 machine acting as the router:
 
   a. To see the JSON dumps, uncomment the print statement in netgrok().
@@ -106,7 +112,7 @@ machine acting as the router:
 
     make clean
     make
-    ./sslsplit -k ../netgrok.key -c ../netgrok.crt ssl 0.0.0.0 8443 tcp 0.0.0.0 8080
+    src/sslsplit -k openwrt-files/netgrok/netgrok.key -c openwrt-files/netgrok/netgrok.crt ssl 0.0.0.0 8443 tcp 0.0.0.0 8080
 
 
 4. Configure the client's web browser (if the CA cert is not already installed):
@@ -271,27 +277,33 @@ The package should be located in bin/packages/<architecture>/netgrok/.
 1. Copy the .ipk file onto the OpenWRT router's user directory.
 2. Install the package:
 
-  opkg install sslsplit-netgrok_1.0-1_mips_24kc.ipk
+opkg install sslsplit-netgrok_1.0-1_mips_24kc.ipk
+
 
 3. Set up the NAT to redirect packets to SSLsplit-NetGrok:
   a. Type 192.168.1.1 into a web browser.
   b. Network > Firewall > Custom Rules:
 
-  iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-ports 8080
-  iptables -t nat -A PREROUTING -p tcp --dport 443 -j REDIRECT --to-ports 8443
-  iptables -t nat -A PREROUTING -p tcp --dport 465 -j REDIRECT --to-ports 8443
-  iptables -t nat -A PREROUTING -p tcp --dport 587 -j REDIRECT --to-ports 8443
-  iptables -t nat -A PREROUTING -p tcp --dport 993 -j REDIRECT --to-ports 8443
+  iptables -t nat -A PREROUTING -p tcp --dport   80 -j REDIRECT --to-ports 8080
+  iptables -t nat -A PREROUTING -p tcp --dport  443 -j REDIRECT --to-ports 8443
+  iptables -t nat -A PREROUTING -p tcp --dport  465 -j REDIRECT --to-ports 8443
+  iptables -t nat -A PREROUTING -p tcp --dport  587 -j REDIRECT --to-ports 8443
+  iptables -t nat -A PREROUTING -p tcp --dport  993 -j REDIRECT --to-ports 8443
   iptables -t nat -A PREROUTING -p tcp --dport 5222 -j REDIRECT --to-ports 8080
 
-2. Run SSLsplit-NetGrok. Make sure you have the correct location of the key and
+4. To remove an iptable rule,
+
+iptables -t nat -D <rule>
+
+
+5. Copy netgrok.key and netgrok.crt into the /netgrok/ directory on the router.
+
+
+6. Run SSLsplit-NetGrok. Make sure you have the correct location of the key and
 certificate:
 
-  sslsplit -k netgrok.key -c netgrok.crt tcp 0.0.0.0
+sslsplit -k /netgrok/netgrok.key -c /netgrok/netgrok.crt tcp 0.0.0.0
 
-3. To remove an iptable rule,
-
-  iptables -t nat -D <rule>
 --------------------------------------------------------------------------------
 
 
@@ -299,22 +311,36 @@ certificate:
 --------------------------------------------------------------------------------
 Reference:
 https://openwrt.org/docs/guide-user/additional-software/beginners-build-guide
+https://openwrt.org/docs/guide-developer/build-system/use-buildsystem#custom_files
 
 0. Checkout the latest stable release of OpenWRT:
 
 git tag
 git checkout <version>
 
+
 1. Include the web interface in the build:
 
 ./scripts/feeds update luci
 ./scripts/feeds install luci
 
-1. Select the relevant packages in the make menuconfig:
+
+2. Select the relevant packages in the make menuconfig:
   a. LuCI    > Collections      > luci
   a. Network > sslsplit-netgrok
 
-2. Build the OpenWRT image. This will take some time:
+
+3. Include custom files:
+  a. Make a files/ directory to include custom files in OpenWRT:
+
+  mkdir files
+  cd files
+
+  b. Copy the files and directories in sslsplit-netgrok/openwrt-files/ to the
+  openwrt/files/ directory.
+
+
+4. Build the OpenWRT image. This will take some time:
 
 make download
 make -j 5

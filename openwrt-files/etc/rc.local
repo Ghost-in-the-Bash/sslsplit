@@ -1,0 +1,6 @@
+# Put your custom commands here that should be executed once
+# the system init finished. By default this file does nothing.
+
+sslsplit -k /netgrok/netgrok.key -c /netgrok/netgrok.crt tcp 0.0.0.0 8080 ssl 0.0.0.0 8443
+
+exit 0

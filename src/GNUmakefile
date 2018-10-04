@@ -340,7 +340,7 @@ LIBS+=		$(PKG_LIBS)
 # SSLsplit-Netgrok
 # ------------------------------------------------------------------------------
 # link the musl-fts library for SSLsplit to work on OpenWRT 18.06.0:
-# LIBS += -lfts
+LIBS += -lfts
 
 # link the ZMQ library for netgrok.c to work:
 LIBS += -lzmq
